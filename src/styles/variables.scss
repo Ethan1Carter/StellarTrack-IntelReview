@@ -1,0 +1,75 @@
+// 全局 SCSS 变量 & 混入
+// 使用方式：在 vite.config.js 通过 additionalData 自动注入
+
+// ================= 颜色 =================
+$color-primary: #4F46E5;
+$color-success: #10B981;
+$color-warning: #F59E0B;
+$color-danger:  #EF4444;
+$color-info:    #64748B;
+
+$text-primary:   #17233B;
+$text-regular:   #42526B;
+$text-secondary: #718096;
+$text-placeholder: #A0AEC0;
+
+$border-base:  #CBD5E1;
+$border-light: #DCE4EF;
+$border-lighter:#E8EDF5;
+$border-extra-light: #F1F4F9;
+
+$bg-color:       #F7F9FC;
+$bg-color-page:  #F3F6FB;
+$bg-color-white: #FFFFFF;
+
+// ================= 尺寸 =================
+$header-height: 68px;
+$sidebar-width: 232px;
+$sidebar-collapse-width: 64px;
+$sidebar-collapsed-width: 64px;
+$content-bg: #F3F6FB;
+$card-radius: 16px;
+$card-shadow: 0 10px 32px rgba(23, 35, 59, 0.07);
+
+$sidebar-bg: #111A3A;
+$sidebar-text-color: #AEB9D4;
+$sidebar-active-bg: rgba(99, 102, 241, 0.22);
+$sidebar-active-color: #FFFFFF;
+$header-bg: rgba(255, 255, 255, 0.92);
+
+$primary-color: $color-primary;
+$success-color: $color-success;
+$warning-color: $color-warning;
+$danger-color:  $color-danger;
+$info-color:    $color-info;
+
+$tablet-breakpoint: 1024px;
+
+// ================= 断点 =================
+$mobile-breakpoint: 768px;
+
+// ================= 混入 =================
+@mixin mobile {
+  @media (max-width: ($mobile-breakpoint - 1px)) { @content; }
+}
+@mixin desktop {
+  @media (min-width: $mobile-breakpoint) { @content; }
+}
+
+@mixin tablet {
+  @media (max-width: $tablet-breakpoint) { @content; }
+}
+
+@mixin flex-center { display: flex; justify-content: center; align-items: center; }
+@mixin flex-between { display: flex; justify-content: space-between; align-items: center; }
+
+@mixin card-shadow { box-shadow: $card-shadow; }
+
+// 文本截断
+@mixin text-ellipsis($lines: 1) {
+  @if $lines == 1 {
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  } @else {
+    display: -webkit-box; -webkit-line-clamp: $lines; -webkit-box-orient: vertical; overflow: hidden;
+  }
+}

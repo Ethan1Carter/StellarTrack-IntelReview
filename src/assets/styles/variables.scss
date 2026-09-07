@@ -1,0 +1,30 @@
+// SCSS 全局变量：校园清新风格
+$primary-color: #409EFF;
+$success-color: #67C23A;
+$warning-color: #E6A23C;
+$danger-color: #F56C6C;
+$info-color: #909399;
+
+$sidebar-bg: #ffffff;
+$sidebar-text-color: #606266;
+$sidebar-active-bg: #ecf5ff;
+$sidebar-active-color: $primary-color;
+
+$header-bg: #ffffff;
+$header-height: 60px;
+$sidebar-width: 220px;
+$sidebar-collapsed-width: 64px;
+$content-bg: #f5f7fa;
+
+$card-radius: 12px;
+$card-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+
+$mobile-breakpoint: 768px;
+$tablet-breakpoint: 1024px;
+
+@mixin mobile {
+  @media (max-width: $mobile-breakpoint) { @content; }
+}
+@mixin tablet {
+  @media (max-width: $tablet-breakpoint) { @content; }
+}
