@@ -3,7 +3,7 @@ const router = express.Router();
 const { ScoreSummary, User, Class, College, Application, BonusModule, ApprovalRecord, Semester } = require('../models');
 const { resolveAcademicTerm, parsePagination } = require('../utils');
 const { auth, requireAdmin, requireSchoolAdmin } = require('../middleware/auth');
-const { narrowClassIds, narrowCollegeIds } = require('../middleware/scope');
+const { narrowClassIds, narrowCollegeIds, assertStudentInScope } = require('../middleware/scope');
 const { ROLES } = require('../constants/roles');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -741,7 +741,7 @@ router.get('/dashboard/summary', auth, async (req, res, next) => {
     if (collegeIdNum) classWhere.collegeId = collegeIdNum;
     if (major) classWhere.major = major;
     if (grade) classWhere.grade = grade;
-    if (classId) classWhere.id = Number(classId);
+    if (classId) classWhere.id = narrowClassIds(req, classId);
 
     if (isCounselor && req.userId) {
       const myClasses = await Class.findAll({ where: { counselorId: req.userId }, attributes: ['id'] });
@@ -933,7 +933,7 @@ router.get('/dashboard/ranking', auth, async (req, res, next) => {
     if (collegeIdNum) classWhere.collegeId = collegeIdNum;
     if (major) classWhere.major = major;
     if (grade) classWhere.grade = grade;
-    if (classId) classWhere.id = Number(classId);
+    if (classId) classWhere.id = narrowClassIds(req, classId);
 
     if (isCounselor && req.userId) {
       const myClasses = await Class.findAll({ where: { counselorId: req.userId }, attributes: ['id'] });
@@ -1202,7 +1202,8 @@ router.get('/dashboard/export', auth, async (req, res, next) => {
     if (collegeIdNum) classWhere.collegeId = collegeIdNum;
     if (major) classWhere.major = major;
     if (grade) classWhere.grade = grade;
-    if (classId) classWhere.id = Number(classId);
+    if (classId) classWhere.id = narrowClassIds(req, classId);
+    if (req.role === 'student') classWhere.id = narrowClassIds(req, classId || null);
 
     if (isCounselor && req.userId) {
       const myClasses = await Class.findAll({ where: { counselorId: req.userId }, attributes: ['id'] });
@@ -1222,7 +1223,7 @@ router.get('/dashboard/export', auth, async (req, res, next) => {
 
     const list = classIds.length > 0
       ? await ScoreSummary.findAll({
-          where: { classId: { [Op.in]: classIds }, academicYear: y, semester: s },
+          where: { classId: { [Op.in]: classIds }, ...(req.role === 'student' ? { studentId: req.userId } : {}), academicYear: y, semester: s },
           include: [{
             association: 'student',
             attributes: ['realName', 'studentNo', 'major'],
@@ -1266,6 +1267,7 @@ router.get('/dashboard/individual/export', auth, async (req, res, next) => {
     const { studentId } = req.query;
     const sid = Number(studentId);
     if (!sid) throw new AppError('缺少学生ID', 400);
+    await assertStudentInScope(req, sid);
 
     const { Op } = require('sequelize');
     const XLSX = require('xlsx');
@@ -1403,7 +1405,7 @@ router.get('/dashboard/activity', auth, async (req, res, next) => {
     if (collegeIdNum) classWhere.collegeId = collegeIdNum;
     if (major) classWhere.major = major;
     if (grade) classWhere.grade = grade;
-    if (classId) classWhere.id = Number(classId);
+    if (classId) classWhere.id = narrowClassIds(req, classId);
 
     if (isCounselor && req.userId) {
       const myClasses = await Class.findAll({ where: { counselorId: req.userId }, attributes: ['id'] });
@@ -1423,6 +1425,7 @@ router.get('/dashboard/activity', auth, async (req, res, next) => {
 
     if (studentId) {
       const sid = Number(studentId);
+      await assertStudentInScope(req, sid);
       // 学生个人数据
       const apps = await Application.findAll({
         where: { studentId: sid, academicYear: y, semester: s }
@@ -1561,7 +1564,7 @@ router.get('/dashboard/module-proportion', auth, async (req, res, next) => {
     if (collegeIdNum) classWhere.collegeId = collegeIdNum;
     if (major) classWhere.major = major;
     if (grade) classWhere.grade = grade;
-    if (classId) classWhere.id = Number(classId);
+    if (classId) classWhere.id = narrowClassIds(req, classId);
 
     if (isCounselor && req.userId) {
       const myClasses = await Class.findAll({ where: { counselorId: req.userId }, attributes: ['id'] });
@@ -1641,7 +1644,7 @@ router.get('/dashboard/score-distribution', auth, async (req, res, next) => {
     if (collegeIdNum) classWhere.collegeId = collegeIdNum;
     if (major) classWhere.major = major;
     if (grade) classWhere.grade = grade;
-    if (classId) classWhere.id = Number(classId);
+    if (classId) classWhere.id = narrowClassIds(req, classId);
 
     if (isCounselor && req.userId) {
       const myClasses = await Class.findAll({ where: { counselorId: req.userId }, attributes: ['id'] });

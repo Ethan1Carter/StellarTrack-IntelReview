@@ -189,7 +189,7 @@ const submitReview = async () => {
 const goReapply = () => {
   if (!cur.value?.reopenedAppId) return;
   // 管理员跳去审批中心详情 / 申报查询页
-  router.push({ path: '/applications', query: { id: cur.value.reopenedAppId } });
+  router.push({ path: '/approval', query: { applicationId: cur.value.reopenedAppId } });
 };
 
 onMounted(async () => {

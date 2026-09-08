@@ -26,7 +26,7 @@
           <el-option label="第二学期" value="second" />
           <el-option label="全学年" value="annual" />
         </el-select>
-        <el-button type="primary" :loading="generating" @click="genReport"><Refresh /> 生成/刷新报表</el-button>
+        <el-button v-if="canGenerate" type="primary" :loading="generating" @click="genReport"><Refresh /> 生成/刷新报表</el-button>
 
         <!-- 状态徽章 + 按钮组 -->
         <template v-if="report">
@@ -244,6 +244,7 @@ import WorkspaceHero from '@/components/WorkspaceHero.vue';
 const userStore = useUserStore();
 const roleAboveCollege = computed(() => ['college_admin','school_admin','super_admin'].includes(userStore.role));
 const canSubmit = computed(() => ['class_admin'].includes(userStore.role));  // 班级管理员上报
+const canGenerate = computed(() => userStore.role === 'class_admin');
 const canReviewCounselor = computed(() => ['counselor','college_admin','school_admin','super_admin'].includes(userStore.role)); // 辅导员及以上审批
 const SEM_LABEL = { first:'（第一学期）', second:'（第二学期）', annual:'（全学年）' };
 const REPORT_STATUS_TAG = {

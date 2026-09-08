@@ -38,7 +38,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import ApprovalList from '@/components/ApprovalList.vue';
 import AppealTodoList from '@/components/AppealTodoList.vue';
 import WorkspaceHero from '@/components/WorkspaceHero.vue';
@@ -64,6 +64,7 @@ function handleQuery() {
   }
 }
 
+let syncTimer = null;
 onMounted(async () => {
   handleQuery();
   await nextTick();
@@ -71,8 +72,9 @@ onMounted(async () => {
   const sync = () => {
     if (appealPendingRef.value && typeof appealPendingRef.value.pendingCount !== 'undefined') appealPending.value = appealPendingRef.value.pendingCount;
   };
-  setInterval(sync, 15000);
+  syncTimer = setInterval(sync, 15000);
 });
+onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer); });
 
 watch(() => route.query, () => {
   handleQuery();

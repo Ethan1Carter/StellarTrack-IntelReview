@@ -26,7 +26,7 @@
         <div><span>HONOR REGISTER</span><h2>学生荣誉明细 <em>{{ data.students.length }} 人</em></h2></div>
         <div class="level-summary"><span v-for="level in levels" :key="level.key" :style="{ '--level-color': level.color }"><i></i>{{ level.label }} <b>{{ data.levelCounts[level.key] || 0 }}</b></span></div>
       </div>
-      <el-table :data="data.students" stripe class="student-table" empty-text="当前范围内暂无已认定的获奖荣誉">
+      <el-table ref="studentTableRef" :data="data.students" stripe class="student-table" empty-text="当前范围内暂无已认定的获奖荣誉">
         <el-table-column type="expand" width="50">
           <template #default="{ row }">
             <div class="honor-detail">
@@ -56,7 +56,13 @@
         <el-table-column prop="className" label="班级" min-width="160" />
         <el-table-column prop="honorCount" label="荣誉数量" width="120" align="center"><template #default="{ row }"><b class="honor-count">{{ row.honorCount }}</b></template></el-table-column>
         <el-table-column prop="totalScore" label="认定总分" width="130" align="center"><template #default="{ row }">{{ formatScore(row.totalScore) }}</template></el-table-column>
-        <el-table-column label="查看明细" width="120" align="center"><template #default><span class="expand-hint">展开</span></template></el-table-column>
+        <el-table-column label="查看明细" width="120" align="center">
+          <template #default="{ row }">
+            <button type="button" class="expand-hint" @click="toggleStudentRow(row)">
+              {{ isStudentExpanded(row) ? '收起' : '展开' }}
+            </button>
+          </template>
+        </el-table-column>
       </el-table>
     </section>
   </div>
@@ -77,20 +83,41 @@ const levels = [
 const filters = reactive({ classId: '', academicYear: '', keyword: '' });
 const loading = ref(false);
 const exporting = ref(false);
+const studentTableRef = ref(null);
+const expandedStudents = ref(new Set());
 const data = ref({ classes: [], total: 0, coveredStudents: 0, activeClassCount: 0, levelCounts: {}, students: [], honors: [] });
 const academicYears = computed(() => [...new Set(data.value.honors.map(item => item.academicYear).filter(Boolean))].sort().reverse());
-const proofs = honor => Array.isArray(honor.attachPhotos) ? honor.attachPhotos.filter(Boolean) : [];
+const normalizeProofs = value => {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String);
+  } catch (_) { /* 兼容逗号分隔的历史数据 */ }
+  return value.split(',').map(item => item.trim()).filter(Boolean);
+};
+const proofs = honor => normalizeProofs(honor?.attachPhotos ?? honor?.proofUrl);
 const certificateCount = computed(() => data.value.honors.reduce((total, honor) => total + proofs(honor).length, 0));
 const getLevel = key => levels.find(item => item.key === key) || levels[levels.length - 1];
 const levelText = honor => honor.awardLevel === 'other' && honor.otherDescription ? `其他：${honor.otherDescription}` : getLevel(honor.awardLevel).label;
 const levelStyle = key => { const level = getLevel(key); return { color: level.color, borderColor: `${level.color}55`, background: level.soft }; };
 const formatScore = value => Number(value || 0).toFixed(2).replace(/\.00$/, '');
 const requestParams = () => Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value != null));
+const studentKey = row => row?.studentId ?? row?.studentNo ?? row?.name;
+const isStudentExpanded = row => expandedStudents.value.has(studentKey(row));
+function toggleStudentRow(row) {
+  studentTableRef.value?.toggleRowExpansion(row);
+  const key = studentKey(row);
+  const next = new Set(expandedStudents.value);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  expandedStudents.value = next;
+}
 async function loadData() {
   loading.value = true;
   try {
     const result = await getCounselorHonors(requestParams());
     data.value = { classes: result?.classes || [], total: Number(result?.total || 0), coveredStudents: Number(result?.coveredStudents || 0), activeClassCount: Number(result?.activeClassCount || 0), levelCounts: result?.levelCounts || {}, students: result?.students || [], honors: result?.honors || [] };
+    expandedStudents.value = new Set();
   } finally { loading.value = false; }
 }
 async function resetFilters() { filters.classId = ''; filters.academicYear = ''; filters.keyword = ''; await loadData(); }

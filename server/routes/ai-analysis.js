@@ -6,7 +6,8 @@ const express = require('express');
 const router = express.Router();
 const { ScoreSummary, User, Class, College, Application, BonusModule, ApprovalRecord } = require('../models');
 const { resolveAcademicTerm, parsePagination } = require('../utils');
-const { auth, requireAdmin, requireSchoolAdmin } = require('../middleware/auth');
+const { auth, requireAdmin, requireSchoolAdmin, requireCollegeAbove } = require('../middleware/auth');
+const { narrowClassIds, narrowCollegeIds, assertStudentInScope } = require('../middleware/scope');
 const { Op, Sequelize } = require('sequelize');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -177,7 +178,7 @@ router.get('/student', auth, async (req, res, next) => {
 /**
  * GET /api/ai-analysis/class - 班级AI分析看板
  */
-router.get('/class', auth, async (req, res, next) => {
+router.get('/class', requireAdmin, async (req, res, next) => {
   try {
     const classId = req.query.classId;
     if (!classId && req.role !== 'counselor') return res.fail('classId必填');
@@ -186,12 +187,7 @@ router.get('/class', auth, async (req, res, next) => {
     const y = academicYear || term.academicYear;
     const s = semester || term.semester;
 
-    let classIds = [classId];
-    if (req.role === 'counselor') {
-      const classes = await Class.findAll({ where: { counselorId: req.userId } });
-      classIds = classes.map(c => c.id);
-      if (classId) classIds = [Number(classId)];
-    }
+    let classIds = narrowClassIds(req, classId || null) || [];
 
     const summaries = await ScoreSummary.findAll({
       where: { classId: { [Op.in]: classIds }, academicYear: y, semester: s },
@@ -262,7 +258,7 @@ router.get('/class', auth, async (req, res, next) => {
 /**
  * GET /api/ai-analysis/college - 院系AI分析看板
  */
-router.get('/college', auth, async (req, res, next) => {
+router.get('/college', requireCollegeAbove, async (req, res, next) => {
   try {
     let collegeId = req.query.collegeId;
     if (req.role === 'college_admin') collegeId = req.user.collegeId;
@@ -273,7 +269,8 @@ router.get('/college', auth, async (req, res, next) => {
     const y = academicYear || term.academicYear;
     const s = semester || term.semester;
 
-    const collegeWhere = collegeId ? { collegeId } : {};
+    const collegeIds = narrowCollegeIds(req, collegeId || null);
+    const collegeWhere = collegeIds === null ? {} : { id: { [Op.in]: collegeIds } };
     const classes = await Class.findAll({ where: collegeWhere, attributes: ['id', 'name'] });
     const classIds = classes.map(c => c.id);
 
@@ -439,9 +436,12 @@ router.get('/school', requireSchoolAdmin, async (req, res, next) => {
 router.get('/comprehensive', auth, async (req, res, next) => {
   try {
     const { scope, collegeId, major, grade, classId, studentId } = req.query;
+    if (studentId) await assertStudentInScope(req, studentId);
+    const allowedClassIds = classId ? narrowClassIds(req, classId) : null;
+    if (collegeId) narrowCollegeIds(req, collegeId);
     const result = await getComprehensiveAnalysis({
       scope, collegeId, major, grade, classId, studentId,
-      userId: req.userId, role: req.role, user: req.user
+      userId: req.userId, role: req.role, user: req.user, allowedClassIds
     });
     res.success(result);
   } catch (err) { next(err); }
@@ -581,7 +581,7 @@ router.get('/report', auth, async (req, res, next) => {
 });
 
 async function getComprehensiveAnalysis(params) {
-  const { scope, collegeId, major, grade, classId, studentId, userId, role, user } = params;
+  const { scope, collegeId, major, grade, classId, studentId, userId, role, user, allowedClassIds } = params;
   const term = resolveAcademicTerm();
   const y = term.academicYear;
   const s = term.semester;
@@ -632,7 +632,7 @@ async function getComprehensiveAnalysis(params) {
   if (collegeIdNum) classWhere.collegeId = collegeIdNum;
   if (major) classWhere.major = major;
   if (grade) classWhere.grade = grade;
-  if (classId) classWhere.id = Number(classId);
+  if (classId) classWhere.id = allowedClassIds || Number(classId);
 
   if (isCounselor && userId) {
     const myClasses = await Class.findAll({ where: { counselorId: userId }, attributes: ['id'] });

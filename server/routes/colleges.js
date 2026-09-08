@@ -7,7 +7,7 @@ const { parsePagination, getClientIp } = require('../utils');
 const { requireSchoolAdmin, requireCollegeAbove, requireAdmin, auth } = require('../middleware/auth');
 const { writeOperateLog } = require('../middleware/logger');
 const { excelUpload } = require('../middleware/upload');
-const { invalidateScopeCache } = require('../middleware/scope');
+const { invalidateScopeCache, narrowClassIds } = require('../middleware/scope');
 
 router.use(auth);
 
@@ -177,7 +177,7 @@ router.post('/import', requireCollegeAbove, excelUpload.single('file'), async (r
 /**
  * GET /api/colleges/export - 导出院系 + 班级 Excel
  */
-router.get('/export', auth, async (req, res, next) => {
+router.get('/export', requireAdmin, async (req, res, next) => {
   try {
     const { Class, User } = require('../models');
     // 院系管理员仅导出本院系
@@ -207,7 +207,8 @@ router.get('/export', auth, async (req, res, next) => {
         '班级名称': '', '班级代码': '', '专业': '', '年级': '',
         '辅导员姓名': '', '班级管理员账号': ''
       });
-      const classes = [...(col.classes || [])].sort((left, right) => {
+      const allowedClassIds = (req.role === 'school_admin' || req.role === 'super_admin') ? null : new Set(narrowClassIds(req, null) || []);
+      const classes = [...(col.classes || [])].filter(cls => allowedClassIds === null || allowedClassIds.has(Number(cls.id))).sort((left, right) => {
         const gradeOrder = String(right.grade || '').localeCompare(String(left.grade || ''), 'zh-CN');
         return gradeOrder || String(left.name || '').localeCompare(String(right.name || ''), 'zh-CN');
       });
