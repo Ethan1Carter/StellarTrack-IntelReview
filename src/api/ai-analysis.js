@@ -21,6 +21,10 @@ export function getComprehensiveAnalysis(params) {
   return request({ url: '/ai-analysis/comprehensive', method: 'GET', params });
 }
 
+export function getGrowthPlan(params) {
+  return request({ url: '/ai-analysis/growth-plan', method: 'GET', params });
+}
+
 // 生成分析报表（支持导出JSON或XLSX）
 export function generateAIReport(params) {
   return request({ url: '/ai-analysis/report', method: 'GET', params });

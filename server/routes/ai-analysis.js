@@ -19,6 +19,75 @@ const categoryNames = {
   scholarship: '奖学金', attendance: '考勤加分', other: '其他'
 };
 
+const growthCategoryNames = {
+  morality: '德育品德',
+  sports: '体育健康',
+  arts: '美育实践',
+  labor: '劳动实践',
+  academy: '学业表现',
+  competition: '竞赛获奖',
+  volunteer: '志愿服务',
+  innovation: '创新创业'
+};
+
+function buildGrowthPlan({ summary, applications, academicYear, semester }) {
+  const scores = summary?.categoryScores || {};
+  const knownScores = Object.entries(scores)
+    .map(([key, value]) => ({ key, name: growthCategoryNames[key] || categoryNames[key] || key, value: Number(value || 0) }))
+    .filter(item => Number.isFinite(item.value));
+  const sorted = [...knownScores].sort((a, b) => a.value - b.value);
+  const weakest = sorted[0] || { key: 'volunteer', name: '志愿服务', value: 0 };
+  const approvedCount = applications.filter(app => ['approved', 'final_review'].includes(app.status)).length;
+  const pendingCount = applications.filter(app => ['approving', 'pending', 'returned'].includes(app.status)).length;
+  const recentCount = applications.filter(app => app.createdAt && Date.now() - new Date(app.createdAt).getTime() < 30 * 86400000).length;
+  const target = Number((weakest.value + Math.max(2, weakest.value < 5 ? 3 : 2)).toFixed(2));
+
+  const actionTemplates = {
+    academy: ['每周完成 2 次重点课程复盘', '建立错题与知识点清单', '参加 1 次学业答疑或学习小组'],
+    competition: ['检索 2 个与专业相关的竞赛机会', '完成 1 份竞赛报名材料初稿', '向指导教师进行 1 次方案评审'],
+    innovation: ['明确 1 个可验证的创新问题', '完成项目方案或实验记录 1 份', '邀请指导教师进行阶段性反馈'],
+    volunteer: ['报名 1 次不少于 2 小时的志愿服务', '记录服务时间、岗位和服务对象', '完成 1 篇服务反思并上传证明'],
+    sports: ['完成每周 3 次、每次 30 分钟运动', '记录运动时长和项目', '参加 1 次校内体育活动'],
+    morality: ['参加 1 次主题教育或社会实践活动', '完成 1 次班级或校园公共服务', '整理并留存过程证明材料'],
+    arts: ['参加 1 次艺术实践或校园文化活动', '完成 1 次作品/演出/观摩记录', '整理活动证明材料'],
+    labor: ['完成 1 次劳动实践活动', '记录劳动过程与成果', '提交劳动教育相关证明']
+  };
+  const actions = actionTemplates[weakest.key] || actionTemplates.volunteer;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    period: `${academicYear} ${semester === 'annual' ? '年度' : `第${semester || ''}学期`}`,
+    diagnosis: {
+      totalScore: Number(summary?.totalScore || 0),
+      weakest: { ...weakest, target },
+      approvedCount,
+      pendingCount,
+      recentCount
+    },
+    goals: [
+      { title: `提升「${weakest.name}」表现`, target: `当前 ${weakest.value} 分 → 目标 ${target} 分`, metric: '新增至少 1 条可核验成长记录' },
+      { title: '形成有效证据链', target: '每项行动均留存材料', metric: '材料完整率达到 100%' },
+      { title: '保持稳定参与', target: '未来 4 周持续执行', metric: '每周至少完成 2 项行动' }
+    ],
+    actions: actions.map((title, index) => ({ order: index + 1, title, cycle: index === 0 ? '第1周' : index === 1 ? '第2-3周' : '第4周', status: '待开始' })),
+    review: ['第 1 周：确认行动是否开始并上传过程记录', '第 2-3 周：检查参与频率和材料完整性', '第 4 周：重新分析五育结构并调整下一周期目标']
+  };
+}
+
+router.get('/growth-plan', auth, async (req, res, next) => {
+  try {
+    const term = resolveAcademicTerm();
+    const academicYear = req.query.academicYear || term.academicYear;
+    const semester = req.query.semester || term.semester;
+    const summary = await ScoreSummary.findOne({ where: { studentId: req.userId, academicYear, semester } });
+    const applications = await Application.findAll({
+      where: { studentId: req.userId, academicYear, semester },
+      attributes: ['status', 'createdAt']
+    });
+    res.success(buildGrowthPlan({ summary, applications, academicYear, semester }));
+  } catch (err) { next(err); }
+});
+
 /**
  * 生成智能分析文本建议
  */

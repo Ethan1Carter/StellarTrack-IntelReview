@@ -37,6 +37,7 @@ router.use('/backups', require('./backups'));
 router.use('/recycles', require('./recycles')); // 数据可回收模块（回收站）
 router.use('/upload', require('./upload'));
 router.use('/profile', require('./profile'));
+router.use('/ai-materials', require('./ai-materials'));
 router.use('/ai-analysis', require('./ai-analysis'));
 router.use('/bonus', require('./bonus')); // 学生加分申报（提交 + 班级管理员待办 + 实时推送）
 

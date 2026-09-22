@@ -49,6 +49,12 @@ const routes = [
         component: () => import('@/views/dashboard/Index.vue'),
         meta: { title: '智能数据看板', icon: 'DataBoard', roles: ALL_AUTHENTICATED }
       },
+      {
+        path: 'ai-material-review',
+        name: 'AIMaterialReview',
+        component: () => import('@/views/ai/MaterialReview.vue'),
+        meta: { title: 'AI 材料审核', icon: 'MagicStick', roles: ALL_AUTHENTICATED }
+      },
 
       // ========== 申报相关 ==========
       {

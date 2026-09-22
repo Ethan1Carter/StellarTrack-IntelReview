@@ -68,6 +68,14 @@ module.exports = {
     maxUploadSize: parseInt(process.env.BACKUP_UPLOAD_MAX_SIZE || String(500 * 1024 * 1024), 10)
   },
 
+  ai: {
+    enabled: String(process.env.AI_ENABLED || 'false').toLowerCase() === 'true',
+    baseUrl: (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
+    apiKey: process.env.AI_API_KEY || '',
+    model: process.env.AI_MODEL || 'gpt-4o-mini',
+    timeoutMs: parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '45000', 10)
+  },
+
   // 系统默认密码（批量导入学生账号默认密码）
   defaultPassword,
 

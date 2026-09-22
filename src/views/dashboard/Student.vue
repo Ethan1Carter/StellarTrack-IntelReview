@@ -51,6 +51,29 @@
       </el-col>
     </el-row>
 
+    <div class="card mt-16 growth-card">
+      <div class="card-title">
+        <span><el-icon><MagicStick /></el-icon> AI 五育成长计划</span>
+        <el-tag v-if="growthPlan" type="success" size="small">基于当前数据生成</el-tag>
+        <router-link to="/ai-material-review">去做 AI 材料审核 →</router-link>
+      </div>
+      <el-skeleton v-if="growthLoading" :rows="3" animated />
+      <template v-else-if="growthPlan">
+        <el-alert :title="growthPlan.diagnosis?.weakest ? `当前优先提升：${growthPlan.diagnosis.weakest.name}（${growthPlan.diagnosis.weakest.value} 分 → ${growthPlan.diagnosis.weakest.target} 分）` : 'AI 正在根据你的成长记录生成建议'" type="info" :closable="false" show-icon />
+        <el-row :gutter="12" class="goal-row">
+          <el-col v-for="goal in growthPlan.goals" :key="goal.title" :xs="24" :sm="8">
+            <div class="goal-item"><strong>{{ goal.title }}</strong><span>{{ goal.target }}</span><small>{{ goal.metric }}</small></div>
+          </el-col>
+        </el-row>
+        <div class="action-list">
+          <div v-for="action in growthPlan.actions" :key="action.order" class="action-item">
+            <el-tag size="small" type="primary">{{ action.cycle }}</el-tag><span>{{ action.title }}</span><el-tag size="small" effect="plain">{{ action.status }}</el-tag>
+          </div>
+        </div>
+      </template>
+      <el-empty v-else description="暂时无法生成成长计划" :image-size="70" />
+    </div>
+
     <!-- 最近通过的申报 -->
     <div class="card mt-16">
       <div class="card-title">
@@ -81,7 +104,8 @@ import { getStudentDashboard } from '@/api/stats';
 import { getMySemesters } from '@/api/applications';
 import { useUserStore } from '@/stores/user';
 import { ElMessage } from 'element-plus';
-import { DataBoard, Trophy, Coin, Clock, Rank } from '@element-plus/icons-vue';
+import { DataBoard, Trophy, Coin, Clock, Rank, MagicStick } from '@element-plus/icons-vue';
+import { getGrowthPlan } from '@/api/ai-analysis';
 
 const userStore = useUserStore();
 const now = dayjs();
@@ -89,6 +113,8 @@ const curAcademicYear = now.month() >= 8 ? `${now.year()}-${now.year()+1}` : `${
 const curSemester = now.month() >= 8 || now.month() <= 0 ? 'first' : 'second';
 const data = ref({ totalScore: '0.00', annualTotal: '0.00', appCount: 0, pendingCount: 0, classRank: null, classTotal: 0, categoryData: [], trend: [], recentApproved: [] });
 const loading = ref(false);
+const growthLoading = ref(false);
+const growthPlan = ref(null);
 
 // 学期列表从后端动态获取（value用 semesterId，避免不同学期配置但学年+学期相同导致option值重复）
 const semesterList = ref([]);
@@ -166,6 +192,7 @@ const lineOption = computed(() => {
 
 const load = async () => {
   loading.value = true;
+  growthLoading.value = true;
   try {
     const params = {};
     if (selectedSemester.value) {
@@ -174,10 +201,15 @@ const load = async () => {
       params.academicYear = curAcademicYear;
       params.semester = curSemester;
     }
-    data.value = await getStudentDashboard(params);
+    const [dashboardResult, planResult] = await Promise.allSettled([getStudentDashboard(params), getGrowthPlan(params)]);
+    if (dashboardResult.status === 'fulfilled') data.value = dashboardResult.value;
+    if (planResult.status === 'fulfilled') growthPlan.value = planResult.value;
   } catch (e) {
     ElMessage.warning('加载统计数据失败');
-  } finally { loading.value = false; }
+  } finally {
+    loading.value = false;
+    growthLoading.value = false;
+  }
 };
 
 const formatTime = (t) => dayjs(t).format('YYYY-MM-DD HH:mm');
@@ -192,4 +224,15 @@ onMounted(async () => {
 <style scoped>
 .filter-bar { display: flex; gap: 12px; align-items: center; }
 .mt-16 { margin-top: 16px; }
+.growth-card .card-title { display:flex; align-items:center; gap:12px; }
+.growth-card .card-title > span { display:flex; align-items:center; gap:6px; }
+.growth-card .card-title a { margin-left:auto; color:#409EFF; font-size:13px; }
+.goal-row { margin:12px 0; }
+.goal-item { display:flex; flex-direction:column; gap:5px; min-height:76px; padding:12px; background:#f7fbff; border:1px solid #e6f0fa; border-radius:10px; }
+.goal-item strong { color:#303133; font-size:14px; }
+.goal-item span { color:#409EFF; font-size:13px; }
+.goal-item small { color:#909399; font-size:12px; }
+.action-list { display:flex; flex-direction:column; gap:8px; }
+.action-item { display:flex; align-items:center; gap:10px; padding:9px 10px; background:#fafafa; border-radius:8px; color:#606266; font-size:13px; }
+.action-item span { flex:1; }
 </style>

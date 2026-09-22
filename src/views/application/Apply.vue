@@ -264,6 +264,7 @@ const dupCheck = reactive({ duplicate: false, existingId: null, checking: false 
 const standardVisible = ref(false);
 const successTitle = ref('申报提交成功！');
 const successDesc = ref('');
+const aiReviewPayload = ref(null);
 
 const form = reactive({
   semesterId: null, title: '', eventDate: '', score: 1, level: '',
@@ -422,7 +423,8 @@ const submit = async (isDraft) => {
       description: form.description || undefined,
       linkUrl: form.linkUrl || null,
       certificateNo: form.certificateNo || null,
-      proofUrl: uploadedUrls.value.length > 0 ? uploadedUrls.value.join(',') : null
+      proofUrl: uploadedUrls.value.length > 0 ? uploadedUrls.value.join(',') : null,
+      extraData: aiReviewPayload.value ? { aiReview: aiReviewPayload.value } : undefined
     };
 
     let res;
@@ -461,6 +463,38 @@ const resetAll = () => {
   uploadedUrls.value = [];
   currentModuleScore.value = null;
   dupCheck.duplicate = false; dupCheck.existingId = null;
+  aiReviewPayload.value = null;
+};
+
+const loadAiReview = async () => {
+  const raw = sessionStorage.getItem('xinggui.aiReview');
+  if (!raw) return;
+  sessionStorage.removeItem('xinggui.aiReview');
+  try {
+    const review = JSON.parse(raw);
+    const module = activeModules.value.find(item => Number(item.id) === Number(review.suggestedModuleId));
+    if (!module) {
+      ElMessage.warning('AI 建议模块当前不可申报，请手动选择模块');
+      return;
+    }
+    aiReviewPayload.value = review;
+    await selectModule(module);
+    Object.assign(form, {
+      title: review.title || '',
+      eventDate: review.eventDate || '',
+      score: Number(review.scoreSuggestion || 1),
+      level: review.awardLevel || '',
+      description: review.description || '',
+      certificateNo: review.certificateNo || ''
+    });
+    if (review.fileUrl) {
+      uploadedUrls.value = [review.fileUrl];
+      fileList.value = [{ uid: 90001, name: review.fileName || 'AI分析材料', url: review.fileUrl, status: 'success' }];
+    }
+    ElMessage.info('已带入 AI 分析建议，请确认后再提交');
+  } catch (_error) {
+    ElMessage.warning('AI 分析结果读取失败，请重新分析');
+  }
 };
 
 // 编辑模式：加载已有申报数据
@@ -527,6 +561,8 @@ onMounted(async () => {
       ElMessage.info('已加载退回单据数据，正在为您提交...');
       setTimeout(() => submit(false), 300);
     }
+  } else if (route.query.from === 'ai') {
+    await loadAiReview();
   }
 });
 </script>

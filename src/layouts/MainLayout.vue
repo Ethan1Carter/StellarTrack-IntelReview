@@ -252,6 +252,12 @@ const MENU_CONFIG = [
     icon: 'DataBoard',
     roles: ['student', 'class_admin', 'counselor', 'college_admin', 'school_admin', 'super_admin']
   },
+  {
+    path: '/ai-material-review',
+    title: 'AI 材料审核',
+    icon: 'MagicStick',
+    roles: ['student', 'class_admin', 'counselor', 'college_admin', 'school_admin', 'super_admin']
+  },
   // 申报
   { path: '/apply', title: '申报加分', icon: 'EditPen', roles: ['student', 'class_admin'] },
   { path: '/my-applications', title: '我的申报', icon: 'Tickets', roles: ['student', 'class_admin'] },
