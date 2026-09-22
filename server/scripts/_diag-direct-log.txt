@@ -1,0 +1,66 @@
+﻿Test Class: { id: 362, collegeId: 56 }
+
+=== 并发 30 User.create 开始 ===
+  [0] attempt=0, uniqueId=015662241601
+  [1] attempt=0, uniqueId=015662241517
+  [2] attempt=0, uniqueId=015662220815
+  [3] attempt=0, uniqueId=015662272416
+  [4] attempt=0, uniqueId=015662306199
+  [6] attempt=0, uniqueId=015662273285
+  [5] attempt=0, uniqueId=015662226834
+  [7] attempt=0, uniqueId=015662263839
+  [8] attempt=0, uniqueId=015662323098
+  [9] attempt=0, uniqueId=015662276950
+  [10] attempt=0, uniqueId=015662319225
+  [11] attempt=0, uniqueId=015662284679
+  [12] attempt=0, uniqueId=015662292315
+  [13] attempt=0, uniqueId=015662347132
+  [14] attempt=0, uniqueId=015662296955
+  [15] attempt=0, uniqueId=015662353256
+  [16] attempt=0, uniqueId=015662349086
+  [17] attempt=0, uniqueId=015662334078
+  [18] attempt=0, uniqueId=015662389676
+  [20] attempt=0, uniqueId=015662333338
+  [19] attempt=0, uniqueId=015662379348
+  [21] attempt=0, uniqueId=015662369728
+  [22] attempt=0, uniqueId=015662386937
+  [23] attempt=0, uniqueId=015662343479
+  [24] attempt=0, uniqueId=015662421177
+  [26] attempt=0, uniqueId=015662350944
+  [27] attempt=0, uniqueId=015662427426
+  [25] attempt=0, uniqueId=015662401465
+  [28] attempt=0, uniqueId=015662365864
+  [29] attempt=0, uniqueId=015662397415
+  [1] ✓ SUCCESS id=7265
+  [0] ✓ SUCCESS id=7264
+  [2] ✓ SUCCESS id=7267
+  [3] ✓ SUCCESS id=7266
+  [4] ✓ SUCCESS id=7268
+  [6] ✓ SUCCESS id=7269
+  [5] ✓ SUCCESS id=7270
+  [7] ✓ SUCCESS id=7271
+  [8] ✓ SUCCESS id=7272
+  [9] ✓ SUCCESS id=7273
+  [10] ✓ SUCCESS id=7274
+  [12] ✓ SUCCESS id=7277
+  [11] ✓ SUCCESS id=7275
+  [13] ✓ SUCCESS id=7276
+  [14] ✓ SUCCESS id=7278
+  [15] ✓ SUCCESS id=7279
+  [16] ✓ SUCCESS id=7280
+  [17] ✓ SUCCESS id=7281
+  [18] ✓ SUCCESS id=7282
+  [20] ✓ SUCCESS id=7283
+  [19] ✓ SUCCESS id=7284
+  [21] ✓ SUCCESS id=7287
+  [23] ✓ SUCCESS id=7285
+  [22] ✓ SUCCESS id=7286
+  [24] ✓ SUCCESS id=7288
+  [26] ✓ SUCCESS id=7289
+  [27] ✓ SUCCESS id=7290
+  [25] ✓ SUCCESS id=7291
+  [28] ✓ SUCCESS id=7292
+  [29] ✓ SUCCESS id=7293
+
+=== 结果: 30/30 (100.0%) ===
+错误分布: {}
