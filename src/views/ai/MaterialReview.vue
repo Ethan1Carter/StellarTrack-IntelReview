@@ -6,52 +6,60 @@
       description="上传成长证明材料，AI 自动提取信息、匹配五育模块并给出可解释的审核建议。最终结果仍由人工复核确认。"
     />
 
-    <el-row :gutter="16">
-      <el-col :xs="24" :lg="10">
-        <div class="card form-card">
-          <div class="card-title">1. 上传与补充材料</div>
-          <el-form label-position="top">
-            <el-form-item label="证明材料">
-              <el-upload
-                action="#"
-                :auto-upload="false"
-                :show-file-list="false"
-                accept="image/*,.pdf"
-                :on-change="onFileChange">
-                <el-button type="primary" plain :loading="uploading">
-                  <el-icon><Upload /></el-icon> 选择图片或 PDF
-                </el-button>
-              </el-upload>
-              <div v-if="fileUrl" class="file-chip">
-                <el-icon><DocumentChecked /></el-icon>
-                <span>{{ fileName }}</span>
-                <el-button link type="primary" @click="previewFile">预览</el-button>
-              </div>
-              <div class="tip">支持 JPG、PNG、WEBP、PDF，单文件不超过 10MB。</div>
-            </el-form-item>
-
-            <el-form-item label="优先匹配模块">
-              <el-select v-model="form.moduleId" clearable filterable placeholder="AI 自动判断，也可手动指定" style="width:100%">
-                <el-option v-for="module in modules" :key="module.id" :label="module.name" :value="module.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="成果标题">
-              <el-input v-model="form.title" maxlength="200" placeholder="可选，例如：全国大学生创新创业训练计划结项" />
-            </el-form-item>
-            <el-form-item label="补充说明">
-              <el-input v-model="form.description" type="textarea" :rows="5" maxlength="500" show-word-limit placeholder="可补充赛事、时间、等级、成果等信息" />
-            </el-form-item>
-            <el-button type="primary" size="large" :loading="reviewing" :disabled="!fileUrl" @click="handleReview">
-              <el-icon><MagicStick /></el-icon> 开始 AI 分析
-            </el-button>
-          </el-form>
+    <div class="review-grid">
+      <section class="card form-card">
+        <div class="card-title">
+          <span class="step-label">01</span>
+          <span>上传与补充材料</span>
+          <span class="card-caption">先上传，再分析</span>
         </div>
-      </el-col>
+        <el-form label-position="top">
+          <el-form-item label="证明材料">
+            <el-upload
+              class="material-upload"
+              action="#"
+              :auto-upload="false"
+              :show-file-list="false"
+              accept="image/*,.pdf"
+              :on-change="onFileChange">
+              <div class="upload-zone">
+                <div class="upload-icon"><el-icon><Upload /></el-icon></div>
+                <div>
+                  <strong>选择图片或 PDF</strong>
+                  <p>支持 JPG、PNG、WEBP、PDF，单文件不超过 10MB</p>
+                </div>
+                <el-icon class="upload-arrow"><Right /></el-icon>
+              </div>
+            </el-upload>
+            <div v-if="fileUrl" class="file-chip">
+              <el-icon><DocumentChecked /></el-icon>
+              <span>{{ fileName }}</span>
+              <el-button link type="primary" @click="previewFile">预览</el-button>
+            </div>
+          </el-form-item>
 
-      <el-col :xs="24" :lg="14">
-        <div class="card result-card" v-loading="reviewing">
+          <div class="form-divider"><span>补充信息</span><i></i></div>
+          <el-form-item label="优先匹配模块">
+            <el-select v-model="form.moduleId" clearable filterable placeholder="AI 自动判断，也可手动指定" style="width:100%">
+              <el-option v-for="module in modules" :key="module.id" :label="module.name" :value="module.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="成果标题">
+            <el-input v-model="form.title" maxlength="200" placeholder="例如：全国大学生创新创业训练计划结项" />
+          </el-form-item>
+          <el-form-item label="补充说明">
+            <el-input v-model="form.description" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="可补充赛事、时间、等级、成果等信息" />
+          </el-form-item>
+          <el-button class="review-button" type="primary" size="large" :loading="reviewing" :disabled="!fileUrl" @click="handleReview">
+            <el-icon><MagicStick /></el-icon> 开始 AI 分析
+          </el-button>
+        </el-form>
+      </section>
+
+      <section class="card result-card" v-loading="reviewing">
           <div class="card-title">
-            2. AI 审核建议
+            <span class="step-label">02</span>
+            <span>AI 审核建议</span>
             <el-tag v-if="result" :type="result.mode === 'model' ? 'success' : 'warning'" size="small">
               {{ result.mode === 'model' ? '模型分析' : '规则降级' }}
             </el-tag>
@@ -87,9 +95,8 @@
               <el-button @click="result = null">重新分析</el-button>
             </div>
           </template>
-        </div>
-      </el-col>
-    </el-row>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -97,7 +104,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { DocumentChecked, MagicStick, Upload } from '@element-plus/icons-vue';
+import { DocumentChecked, MagicStick, Upload, Right } from '@element-plus/icons-vue';
 import WorkspaceHero from '@/components/WorkspaceHero.vue';
 import { uploadProof } from '@/api/applications';
 import { listActiveModules } from '@/api/modules';
@@ -175,10 +182,24 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
-.ai-review-page { padding-bottom: 20px; }
-.form-card, .result-card { min-height: 560px; }
-.card-title { display:flex; align-items:center; gap:10px; }
-.tip { color:#909399; font-size:12px; margin-top:8px; }
+.ai-review-page { padding-bottom: 34px; }
+.review-grid { display:grid; grid-template-columns:minmax(360px, .82fr) minmax(0, 1.18fr); align-items:start; gap:18px; margin-top:18px; }
+.form-card, .result-card { min-width:0; padding-bottom:24px; }
+.card-title { display:flex; align-items:center; justify-content:flex-start; gap:10px; }
+.card-caption { margin-left:auto; color:#9AA8BA; font-size:12px; font-weight:400; }
+.step-label { color:#2B7AC2; font-size:11px; font-weight:800; letter-spacing:.12em; }
+.form-card :deep(.el-form) { padding:0 20px; }
+.form-card :deep(.el-form-item) { margin-bottom:16px; }
+.form-card :deep(.el-form-item__label) { color:#53657B; font-size:13px; font-weight:600; padding-bottom:6px; }
+.material-upload { display:block; width:100%; }
+.upload-zone { display:flex; align-items:center; gap:12px; width:100%; min-height:72px; padding:12px 14px; border:1px dashed #A9C9E8; border-radius:12px; background:linear-gradient(135deg,#F7FBFF,#F1F7FE); text-align:left; transition:.2s ease; }
+.upload-zone:hover { border-color:#4B9DE0; background:#EEF7FF; transform:translateY(-1px); }
+.upload-icon { width:38px; height:38px; display:flex; align-items:center; justify-content:center; flex:none; border-radius:10px; color:#2B84CE; background:#DDEFFF; font-size:19px; }
+.upload-zone strong { color:#24527C; font-size:14px; }
+.upload-zone p { margin:4px 0 0; color:#8A9BAE; font-size:11px; line-height:1.45; }
+.upload-arrow { margin-left:auto; color:#6C9BC4; }
+.form-divider { display:flex; align-items:center; gap:10px; margin:2px 0 14px; color:#93A1B3; font-size:11px; letter-spacing:.08em; }
+.form-divider i { height:1px; flex:1; background:#E7EDF4; }
 .file-chip { display:flex; align-items:center; gap:8px; margin-top:12px; padding:10px 12px; border:1px solid #dcdfe6; border-radius:8px; color:#303133; }
 .file-chip span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .confidence-row { display:flex; align-items:center; gap:14px; margin:0 0 16px; color:#606266; font-size:13px; }
@@ -188,5 +209,18 @@ onMounted(async () => {
 .result-section ul { margin:0; padding-left:20px; color:#606266; line-height:1.8; }
 .risk-tag { margin:0 8px 8px 0; }
 .result-actions { margin-top:20px; display:flex; gap:10px; }
+.review-button { min-width:168px; height:42px; border-radius:11px; }
 .mb-12 { margin-bottom:12px; }
+
+@media (max-width: 980px) {
+  .review-grid { grid-template-columns:1fr; }
+  .result-card { min-height:360px; }
+}
+@media (max-width: 600px) {
+  .review-grid { gap:12px; margin-top:12px; }
+  .card-caption { display:none; }
+  .form-card :deep(.el-form) { padding:0 14px; }
+  .upload-zone p { max-width:190px; }
+  .confidence-row { align-items:flex-start; flex-direction:column; gap:6px; }
+}
 </style>
