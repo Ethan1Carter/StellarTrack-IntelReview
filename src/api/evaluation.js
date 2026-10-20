@@ -1,4 +1,5 @@
 import request from '@/utils/request';
+export const previewEvaluationConfig=data=>request({url:'/evaluation/config/preview',method:'POST',data,timeout:120000});
 
 /**
  * 获取当前用户/指定学院的综测公式配置

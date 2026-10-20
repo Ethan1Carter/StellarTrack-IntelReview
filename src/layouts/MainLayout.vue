@@ -245,6 +245,7 @@ const goHome = () => router.push('/');
 
 // ========== 菜单（按角色过滤） ==========
 const MENU_CONFIG = [
+  {path:'/work-items',title:'我的待办与提醒',icon:'Bell',roles:['student','class_admin','counselor','college_admin','school_admin','super_admin']},
   // 智能数据看板（含AI分析功能）
   {
     path: '/dashboard',

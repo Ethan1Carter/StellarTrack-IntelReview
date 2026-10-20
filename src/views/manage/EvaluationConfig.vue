@@ -243,6 +243,11 @@
           </span>
         </el-form-item>
 
+        <el-divider content-position="left">修改后影响试算</el-divider>
+        <p style="font-size:12px;color:#63758b;line-height:1.8;">选取本院系少量学生作为样本，对比当前配置与页面中待保存配置；不会保存规则或改写学生成绩。</p>
+        <div class="preview-controls"><el-input v-model="previewTerm.academicYear" aria-label="试算学年" placeholder="学年，例如 2026-2027"/><el-select v-model="previewTerm.semester" aria-label="试算学期"><el-option label="第一学期" value="first"/><el-option label="第二学期" value="second"/></el-select><el-input-number v-model="previewTerm.sampleSize" :min="1" :max="5" aria-label="试算样本人数"/><el-button :loading="previewLoading" @click="runPreview">试算待保存配置</el-button></div>
+        <p v-if="previewError" style="color:#b45309;font-size:13px;">{{previewError}}</p>
+        <template v-if="previewResult"><p style="font-size:12px;color:#63758b;">{{previewResult.notice}}</p><el-empty v-if="!previewResult.rows.length" description="本院系暂无可试算学生"/><el-table v-else :data="previewResult.rows"><el-table-column prop="name" label="样本学生"/><el-table-column prop="studentNo" label="学号"/><el-table-column prop="before" label="当前配置得分"/><el-table-column prop="after" label="待保存配置得分"/><el-table-column prop="delta" label="变化"/><el-table-column label="各维度对照" min-width="260"><template #default="{row}"><span v-for="item in row.modules" :key="item.key" style="display:block;font-size:12px;">{{item.name}}：{{item.before}} → {{item.after}}</span><span v-for="(warning,i) in row.warnings" :key="i" style="color:#b45309;">{{warning}}</span></template></el-table-column></el-table></template>
         <!-- ========== category 映射 ========== -->
         <el-divider content-position="left">
           <el-icon><Connection /></el-icon> 加分模块 category 映射
@@ -270,12 +275,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useUserStore } from '@/stores/user';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   getEvaluationConfig, saveEvaluationConfig, resetEvaluationConfig,
-  testFormula, getFormulaDefaults
+  testFormula, getFormulaDefaults,previewEvaluationConfig
 } from '@/api/evaluation';
 import { getCollegeList } from '@/api/college';
 import WorkspaceHero from '@/components/WorkspaceHero.vue';
@@ -331,6 +336,14 @@ const testForm = reactive({
   formula: 'F1 + F2 + F3 + F4 + F5',
   varsText: '{"F1": 14, "F2": 48.92, "F3": 4.5, "F4": 0, "F5": 2}'
 });
+const previewLoading=ref(false);const previewResult=ref(null);const previewError=ref('');let previewVersion=0;
+const currentYear=new Date().getFullYear()-(new Date().getMonth()<8?1:0);
+const previewTerm=reactive({academicYear:`${currentYear}-${currentYear+1}`,semester:new Date().getMonth()>=8||new Date().getMonth()===0?'first':'second',sampleSize:3});
+watch(()=>[config,categoryRows.value,selectedCollegeId.value,previewTerm],()=>{previewVersion++;previewResult.value=null;previewLoading.value=false;previewError.value='';},{deep:true,flush:'sync'});
+async function runPreview(){const version=++previewVersion;previewLoading.value=true;previewError.value='';previewResult.value=null;
+  try{const result=await previewEvaluationConfig({...previewTerm,collegeId:isSchoolAbove.value?selectedCollegeId.value:config.collegeId,
+    config:{...config,categoryMapping:Object.fromEntries(categoryRows.value.map(row=>[row.category,row.target]))}});if(version===previewVersion)previewResult.value=result;}
+  catch(error){if(version===previewVersion)previewError.value=error.message||'试算失败，请检查配置和院系';}finally{if(version===previewVersion)previewLoading.value=false;}}
 
 // 加载学院列表
 async function loadColleges() {
@@ -524,4 +537,6 @@ onMounted(async () => {
   font-size: 18px;
   font-weight: 600;
 }
+.preview-controls{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0;}.preview-controls>.el-input,.preview-controls>.el-select{width:180px;}@media(max-width:600px){.preview-controls>.el-input,.preview-controls>.el-select{width:100%;}}
+@media(max-width:700px){:deep(.el-col){flex:0 0 100%;max-width:100%;}:deep(.el-form-item__content){min-width:0;}:deep(.el-input-number){max-width:100%;}:deep(.el-divider__text){white-space:normal;max-width:90%;font-size:12px;}}
 </style>

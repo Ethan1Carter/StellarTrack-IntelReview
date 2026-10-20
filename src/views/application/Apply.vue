@@ -193,6 +193,15 @@
           </div>
         </el-form-item>
 
+        <el-form-item label="同成果核对">
+          <div style="width:100%;"><el-button :loading="dupCheck.checking" :disabled="pendingUploads>0" @click="onTitleBlur">核对材料与成果</el-button>
+            <p style="font-size:12px;color:#63758b;line-height:1.8;">{{dupCheck.notice || '按本人申报核对文件内容、证书编号及成果信息；合理复用请说明原因，由教师复核。'}}</p>
+            <el-alert v-if="dupCheck.error" type="error" :title="dupCheck.error" :closable="false"/>
+            <el-alert v-if="dupCheck.incomplete" type="warning" title="部分历史材料未能完整核对，请人工检查。" :closable="false"/>
+            <ul v-if="dupCheck.materialMatches.length" style="font-size:13px;line-height:1.8;"><li v-for="match in dupCheck.materialMatches" :key="match.id">申报 #{{match.id}} · {{match.title}}：{{match.reasons.join('、')}}</li></ul>
+            <el-input v-if="dupCheck.materialMatches.length" v-model="duplicateReason" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="说明本次与已有成果的区别，或团队材料复用原因（至少 5 字）"/>
+          </div>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" size="large" :loading="submitting" :disabled="pendingUploads > 0 || fileList.some(file => file.status === 'fail') || !canApplyAny || overSingleMax || overYearlyMax || dupCheck.duplicate"
                      @click="submit(false)">
@@ -268,7 +277,8 @@ const fileList = ref([]);
 const uploadedUrls = ref([]);
 const editingId = ref(null); // 编辑模式下的申报 ID
 const currentModuleScore = ref(null); // 本学期已得分数
-const dupCheck = reactive({ duplicate: false, existingId: null, checking: false });
+const dupCheck = reactive({ duplicate: false, existingId: null, checking: false,materialMatches:[],incomplete:false,notice:'',error:'' });
+const duplicateReason=ref('');let duplicateVersion=0;
 const standardVisible = ref(false);
 const successTitle = ref('申报提交成功！');
 const successDesc = ref('');
@@ -361,19 +371,25 @@ watch(() => form.semesterId, async () => {
 const onScoreChange = () => {};
 const onExceed = () => ElMessage.warning('最多上传10个文件');
 const onTitleBlur = async () => {
-  if (!form.title || !selectedModule.value) { dupCheck.duplicate = false; return; }
-  if (editingId.value) { dupCheck.duplicate = false; return; } // 编辑模式跳过
+  if (!selectedModule.value || pendingUploads.value>0) return;
+  const version=++duplicateVersion;
   dupCheck.checking = true;
+  dupCheck.error='';
   try {
     const r = await checkDuplicate({
       moduleId: selectedModule.value.id,
       title: form.title,
-      eventDate: form.eventDate || undefined
+      eventDate: form.eventDate || undefined,certificateNo:form.certificateNo,proofUrl:[...uploadedUrls.value],excludeId:editingId.value||undefined
     });
+    if(version!==duplicateVersion)return;
     dupCheck.duplicate = !!r?.duplicate;
     dupCheck.existingId = r?.existingId || null;
-  } catch (_) {} finally { dupCheck.checking = false; }
+    dupCheck.materialMatches=r?.materialMatches||[];dupCheck.incomplete=!!r?.incomplete;dupCheck.notice=r?.notice||'';
+  } catch (err) {if(version===duplicateVersion)dupCheck.error=err.message||'核对失败，请重试';} finally {if(version===duplicateVersion)dupCheck.checking = false;}
 };
+watch(()=>[form.title,form.eventDate,form.certificateNo,selectedModule.value?.id,uploadedUrls.value.join(',')],()=>{
+  duplicateVersion++;Object.assign(dupCheck,{duplicate:false,existingId:null,materialMatches:[],incomplete:false,checking:false,error:'',notice:''});
+},{flush:'sync'});
 
 const isImg = (url) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url || '');
 const onFileChange = async (uploadFile) => {
@@ -421,8 +437,10 @@ const submit = async (isDraft) => {
       }
     }
     // 重复申报校验（提交前再次确认）
-    if (!editingId.value) {
+    {
       await onTitleBlur();
+      if(dupCheck.error)return ElMessage.warning('材料核对尚未成功，请重新核对后提交');
+      if(dupCheck.materialMatches.length && duplicateReason.value.trim().length<5)return ElMessage.warning('请补充至少 5 字的同成果情况说明');
       if (dupCheck.duplicate) {
         ElMessage.error('检测到重复申报，已存在相同标题的申报单 #' + dupCheck.existingId);
         return;
@@ -443,6 +461,7 @@ const submit = async (isDraft) => {
       description: form.description || undefined,
       linkUrl: form.linkUrl || null,
       certificateNo: form.certificateNo || null,
+      duplicateReason:duplicateReason.value,
       proofUrl: uploadedUrls.value.length > 0 ? uploadedUrls.value.join(',') : null,
       extraData: aiReviewPayload.value ? { aiReview: aiReviewPayload.value, aiConfirmation: { reason: aiConfirmationReason.value } } : undefined
     };
@@ -489,6 +508,7 @@ const submit = async (isDraft) => {
 const resetAll = () => {
   step.value = 1;
   selectedModule.value = null;
+  duplicateReason.value='';
   editingId.value = null;
   Object.assign(form, { semesterId: null, title: '', eventDate: '', score: 1, level: '', otherDescription: '', description: '', linkUrl: '', certificateNo: '' });
   fileList.value = [];
@@ -543,6 +563,7 @@ const loadForEdit = async (id) => {
     editingId.value = Number(id);
     aiReviewPayload.value = app.extraData?.aiReview || null;
     aiConfirmationReason.value = app.extraData?.aiConfirmation?.reason || '';
+    duplicateReason.value=app.extraData?.duplicateReview?.reason||'';
     // 找到对应模块
     const mod = app.module;
     if (mod) {

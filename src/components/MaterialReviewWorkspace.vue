@@ -50,6 +50,7 @@
         <p v-if="review?.mode && review.mode !== 'model'" class="comparison-note">此分析来自{{ review.mode === 'fallback' ? '规则降级' : '历史记录' }}，请以原件核对为准。</p>
         <p v-if="review && !sourceAvailable" class="source-unavailable">分析时的附件不在当前清单中，已暂停页码定位，请人工核对对应原件。</p>
         <div v-if="confirmation" class="confirmation-note"><strong>申报人核对说明</strong><p>{{ confirmation }}</p></div>
+        <div v-if="app.extraData?.duplicateReview?.matches?.length" class="confirmation-note"><strong>同成果提示 · 需人工复核</strong><p v-for="match in app.extraData.duplicateReview.matches" :key="match.id">申报 #{{match.id}}：{{match.reasons.join('、')}}</p><p>申报人说明：{{app.extraData.duplicateReview.reason||'未填写'}}</p><p v-if="app.extraData.duplicateReview.incomplete">部分历史附件未完整核对。</p></div>
         <AIReviewEvidence :review="review" expanded :source-available="sourceAvailable" @view-page="focusEvidence" />
         <details class="current-rules"><summary>查看当前模块加分标准</summary><p>当前配置与分析时的版本可能不同，请核对适用学年。</p><blockquote>{{ app.module?.ruleDescription || '尚未配置规则说明，请联系规则维护人员确认。' }}</blockquote></details>
       </section>

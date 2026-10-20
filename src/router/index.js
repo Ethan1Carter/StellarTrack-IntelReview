@@ -42,6 +42,7 @@ const routes = [
     component: () => import('@/layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
     children: [
+      {path:'work-items',name:'WorkItems',component:()=>import('@/views/WorkItems.vue'),meta:{title:'我的待办与提醒',icon:'Bell',roles:ALL_AUTHENTICATED}},
       // ========== 智能数据看板（统一页面，多维度筛选，含AI分析功能） ==========
       {
         path: 'dashboard',

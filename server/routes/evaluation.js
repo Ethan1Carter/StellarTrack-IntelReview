@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { User, Class, College, EvaluationConfig } = require('../models');
 const { auth, requireStudent, requireAdmin, requireCollegeAbove, requireSchoolAdmin } = require('../middleware/auth');
-const { assertStudentInScope, assertClassInScope } = require('../middleware/scope');
+const { assertStudentInScope, assertClassInScope, narrowCollegeIds } = require('../middleware/scope');
 const { AppError } = require('../middleware/errorHandler');
 const { Op } = require('sequelize');
 const { calcEvaluation, buildEffectiveConfig, DEFAULT_FORMULAS } = require('../utils/evaluation');
@@ -302,6 +302,31 @@ router.post('/config/test', requireCollegeAbove, async (req, res, next) => {
     }
     res.success({ ok: true, error: null, result: Number(result.toFixed(4)) });
   } catch (err) { next(err); }
+});
+
+// 对本院系少量样本进行整套规则试算；不保存配置，不写入成绩或排名。
+router.post('/config/preview', requireCollegeAbove, async (req,res,next)=>{
+  try{
+    const collegeId=req.role==='college_admin'?await resolveMyCollegeId(req):parseId(req.body.collegeId);
+    if(!collegeId) throw new AppError('请选择目标院系',400);
+    narrowCollegeIds(req,collegeId);
+    const candidate=req.body.config;
+    if(!candidate || typeof candidate!=='object' || Array.isArray(candidate)) throw new AppError('试算配置格式无效',400);
+    const validation=validateConfigPayload(candidate);if(!validation.valid)throw new AppError(validation.errors.join('；'),400);
+    const term=resolveAcademicTerm();const academicYear=req.body.academicYear||term.academicYear;const semester=req.body.semester||term.semester;
+    if(typeof academicYear!=='string'||!/^\d{4}-\d{4}$/.test(academicYear)||Number(academicYear.slice(5))!==Number(academicYear.slice(0,4))+1||!['first','second'].includes(semester))throw new AppError('学年或学期无效',400);
+    const limit=Number(req.body.sampleSize??3);if(!Number.isInteger(limit)||limit<1||limit>5)throw new AppError('样本人数须为 1–5 人',400);
+    const students=await User.findAll({where:{collegeId,role:{[Op.in]:['student','class_admin']},status:'active'},attributes:['id','realName','studentNo'],order:[['id','ASC']],limit,raw:true});
+    const rows=[];
+    for(const student of students){
+      await assertStudentInScope(req,student.id);
+      const before=await calcEvaluation(student.id,academicYear,semester);const after=await calcEvaluation(student.id,academicYear,semester,candidate);
+      rows.push({studentId:student.id,name:student.realName,studentNo:student.studentNo,before:before.totalScore,after:after.totalScore,delta:Number((after.totalScore-before.totalScore).toFixed(2)),
+        modules:Object.keys(before.modules).map(key=>({key,name:before.modules[key].name,before:before.modules[key].score,after:after.modules[key].score})),
+        warnings:after.calculation.steps.filter(step=>step.warning).map(step=>step.warning),version:after.calculation.version});
+    }
+    res.success({academicYear,semester,collegeId,rows,notice:'按系统记录顺序选取本院系少量在校样本，使用查询时数据；不是全院影响评估。试算不保存配置或改写成绩，数据变动后请重新试算。'});
+  }catch(error){next(error);}
 });
 
 /**

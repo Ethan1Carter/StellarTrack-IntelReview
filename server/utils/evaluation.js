@@ -20,6 +20,7 @@ const { Op } = require('sequelize');
 const { CourseScore, Application, BonusModule, EvaluationConfig, User } = require('../models');
 const BonusClaim = require('../models/BonusClaim');
 const { evalFormula } = require('./formulaParser');
+const { explainEvaluation } = require('./scoreExplanation');
 
 /**
  * 加分模块 category → 综测5大模块的映射（默认）
@@ -246,6 +247,7 @@ async function calcF2b(studentId, academicYear, semester, config = {}, bc = {}) 
   const details = [];
 
   for (const app of apps) {
+    if (app.finalReviewAction === 'reject') continue;
     const cat = app.module?.category || 'other';
     const targetModule = catMap[cat];
     if (targetModule !== 'F2b') continue;
@@ -301,6 +303,7 @@ async function calcF1(studentId, academicYear, semester, config = {}, bc = {}) {
   const details = [];
 
   for (const app of apps) {
+    if (app.finalReviewAction === 'reject') continue;
     const cat = app.module?.category || 'other';
     if (catMap[cat] !== 'F1') continue;
 
@@ -451,6 +454,7 @@ async function calcF3(studentId, academicYear, semester, config = {}, bc = {}) {
   const details = [];
 
   for (const app of apps) {
+    if (app.finalReviewAction === 'reject') continue;
     const cat = app.module?.category || 'other';
     if (catMap[cat] !== 'F3') continue;
 
@@ -529,6 +533,7 @@ async function calcF4(studentId, academicYear, semester, config = {}, bc = {}) {
   const details = [];
 
   for (const app of apps) {
+    if (app.finalReviewAction === 'reject') continue;
     const cat = app.module?.category || 'other';
     if (catMap[cat] !== 'F4') continue;
 
@@ -605,6 +610,7 @@ async function calcF5(studentId, academicYear, semester, config = {}, bc = {}) {
   const details = [];
 
   for (const app of apps) {
+    if (app.finalReviewAction === 'reject') continue;
     const cat = app.module?.category || 'other';
     if (catMap[cat] !== 'F5') continue;
 
@@ -618,6 +624,11 @@ async function calcF5(studentId, academicYear, semester, config = {}, bc = {}) {
     });
   }
 
+  // 先合并历史劳育加分，再进入公式，保证明细与实际计分一致。
+  if (bc && bc.labor) {
+    practiceScore += Number(bc.labor);
+    details.push({ moduleName: '加分申报', category: 'labor', title: '（自动归入劳育）', score: Number(bc.labor) });
+  }
   // 按公式计算
   let f5;
   const formula = config?.f5Formula;
@@ -634,12 +645,6 @@ async function calcF5(studentId, academicYear, semester, config = {}, bc = {}) {
     // 默认公式：劳动教育基础分 + 劳动实践封顶3分
     const laborPractice = Math.min(practiceScore, 3);
     f5 = f5Base + laborPractice;
-  }
-
-  // 加分申报（BonusClaim）自动归入劳育
-  if (bc && bc.labor) {
-    practiceScore += Number(bc.labor);
-    details.push({ moduleName: '加分申报', category: 'labor', title: '（自动归入劳育）', score: Number(bc.labor) });
   }
 
   f5 = Math.min(f5, f5Max);
@@ -663,9 +668,9 @@ async function calcF5(studentId, academicYear, semester, config = {}, bc = {}) {
  * @param {string} semester
  * @returns {Promise<Object>} 完整的综测计算结果
  */
-async function calcEvaluation(studentId, academicYear, semester) {
+async function calcEvaluation(studentId, academicYear, semester, configOverride) {
   // 加载该学生所属学院的综测配置
-  const rawConfig = await getEvaluationConfig(studentId);
+  const rawConfig = configOverride === undefined ? await getEvaluationConfig(studentId) : configOverride;
   const config = buildEffectiveConfig(rawConfig);
 
   // 加分申报（BonusClaim）自动归入五育：拉取本学期已通过记录，按 pillar 聚合
@@ -707,7 +712,7 @@ async function calcEvaluation(studentId, academicYear, semester) {
     totalScore = f1Result.f1 + f2Result.f2 + f3Result.f3 + f4Result.f4 + f5Result.f5;
   }
 
-  return {
+  const result = {
     studentId,
     academicYear,
     semester,
@@ -744,6 +749,8 @@ async function calcEvaluation(studentId, academicYear, semester) {
       F5: { name: '劳育', score: f5Result.f5, max: config.f5Max, ...f5Result }
     }
   };
+  result.calculation=explainEvaluation(result,config,rawConfig);
+  return result;
 }
 
 module.exports = {

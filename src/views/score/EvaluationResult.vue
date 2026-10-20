@@ -64,26 +64,27 @@
             <div class="module-card" :class="m.color">
               <div class="module-name">{{ m.name }}</div>
               <div class="module-score">{{ getModuleScore(m.key) }}</div>
-              <div class="module-max">/ {{ m.max }}</div>
+              <div class="module-max">/ {{ (detailDrawer && detailResult ? detailResult : result)?.modules?.[m.key]?.max ?? m.max }}</div>
               <el-progress :percentage="Math.min(100, (getModuleScore(m.key) / m.max) * 100)" :color="m.progressColor" :show-text="false" :stroke-width="4" style="margin-top:8px;" />
             </div>
           </el-col>
         </el-row>
       </div>
 
+      <ScoreExplanation :calculation="result?.calculation" />
       <!-- 智育明细 -->
       <div class="card mt-16">
         <div class="card-title">智育 F₂ 计算公式</div>
         <div class="formula-board">
           <div class="formula-copy">
             <span>本学期计分规则</span>
-            <strong>(F₂a × 0.8 + F₂b × 0.2) × 0.7</strong>
-            <small>课程表现占 80%，智育奖励占 20%，合成后计入综测总分。</small>
+            <strong>{{result?.calculation?.steps?.find(step=>step.key==='F2')?.formula || f2Result.formula}}</strong>
+            <small>按当前院系配置计算，变量与封顶过程见计分解释。</small>
           </div>
           <div class="formula-values">
             <div><span>F₂a · 学分加权</span><strong>{{ f2Result.f2a }}</strong><small>满分 100</small></div>
-            <div><span>F₂b · 智育奖励</span><strong>{{ f2Result.f2b }}</strong><small>满分 14</small></div>
-            <div class="formula-result"><span>F₂ · 智育得分</span><strong>{{ f2Result.internalScore }}</strong><small>{{ f2Result.courseCount }} 门课 · {{ f2Result.totalCredit }} 学分</small></div>
+            <div><span>F₂b · 智育奖励</span><strong>{{ f2Result.f2b }}</strong><small>上限 {{result?.config?.f2bMax??14}}</small></div>
+            <div class="formula-result"><span>F₂ · 智育得分</span><strong>{{ f2Result.score }}</strong><small>{{ f2Result.courseCount }} 门课 · {{ f2Result.totalCredit }} 学分</small></div>
           </div>
         </div>
 
@@ -185,7 +186,7 @@
               <div class="module-card" :class="m.color">
                 <div class="module-name">{{ m.name }}</div>
                 <div class="module-score">{{ getModuleScore(m.key) }}</div>
-                <div class="module-max">/ {{ m.max }}</div>
+                <div class="module-max">/ {{ (detailDrawer && detailResult ? detailResult : result)?.modules?.[m.key]?.max ?? m.max }}</div>
               </div>
             </el-col>
           </el-row>
@@ -197,6 +198,7 @@
     <el-drawer v-model="detailDrawer" :title="detailTitle" size="80%" :destroy-on-close="true">
       <div v-loading="detailLoading">
         <template v-if="detailResult">
+          <ScoreExplanation :calculation="detailResult.calculation" />
           <div class="score-header">
             <div class="total-score">
               <div class="label">综合素质测评总分</div>
@@ -209,7 +211,7 @@
               <div class="module-card" :class="m.color">
                 <div class="module-name">{{ m.name }}</div>
                 <div class="module-score">{{ getDetailModuleScore(m.key) }}</div>
-                <div class="module-max">/ {{ m.max }}</div>
+                <div class="module-max">/ {{ (detailDrawer && detailResult ? detailResult : result)?.modules?.[m.key]?.max ?? m.max }}</div>
               </div>
             </el-col>
           </el-row>
@@ -230,13 +232,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onActivated } from 'vue';
+import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '@/stores/user';
 import { getMyEvaluation, getStudentEvaluation, getClassEvaluation } from '@/api/evaluation';
 import request from '@/utils/request';
 import dayjs from 'dayjs';
 import WorkspaceHero from '@/components/WorkspaceHero.vue';
+import ScoreExplanation from '@/components/ScoreExplanation.vue';
 
 const userStore = useUserStore();
 const role = computed(() => userStore.userInfo?.role || '');
@@ -277,6 +280,8 @@ const detailDrawer = ref(false);
 const detailLoading = ref(false);
 const detailTitle = ref('');
 const detailResult = ref(null);
+let loadVersion=0;let detailVersion=0;
+watch(detailDrawer,visible=>{if(!visible)detailVersion++;});
 const detailTab = ref('F1');
 
 const moduleList = [
@@ -354,6 +359,8 @@ async function searchStudents(query) {
 }
 
 async function loadData() {
+  const version=++loadVersion;detailVersion++;detailDrawer.value=false;detailResult.value=null;result.value=null;classResult.value=null;loading.value=false;
+  const period={academicYear:selAcademicYear.value,semester:selSemester.value};
   if (isAdmin.value && role.value !== 'class_admin') {
     if (viewMode.value === 'class' && !selClassId.value) { classResult.value = null; result.value = null; return; }
     if (viewMode.value === 'student' && !selStudentId.value) { result.value = null; return; }
@@ -362,47 +369,50 @@ async function loadData() {
   loading.value = true;
   try {
     if (isStudent.value) {
-      const res = await getMyEvaluation({ academicYear: selAcademicYear.value, semester: selSemester.value });
-      result.value = res;
+      const res = await getMyEvaluation(period);
+      if(version===loadVersion)result.value = res;
     } else if (role.value === 'class_admin' || viewMode.value === 'class') {
       let classId = selClassId.value;
       if (role.value === 'class_admin') {
         try {
           const me = await request({ url: '/classes/my/info', method: 'GET' });
+          if(version!==loadVersion)return;
           classId = me?.id || me?.data?.id;
-        } catch (_) { classResult.value = null; return; }
+        } catch (_) { if(version===loadVersion)classResult.value = null; return; }
       }
       if (!classId) { classResult.value = null; return; }
-      const res = await getClassEvaluation(classId, { academicYear: selAcademicYear.value, semester: selSemester.value });
-      classResult.value = res;
+      const res = await getClassEvaluation(classId, period);
+      if(version===loadVersion)classResult.value = res;
     } else {
       // 按个人查
-      const res = await getStudentEvaluation(selStudentId.value, { academicYear: selAcademicYear.value, semester: selSemester.value });
-      result.value = res;
+      const res = await getStudentEvaluation(selStudentId.value, period);
+      if(version===loadVersion)result.value = res;
     }
   } catch (e) {
-    ElMessage.error('查询失败：' + (e.message || ''));
+    if(version===loadVersion)ElMessage.error('查询失败：' + (e.message || ''));
   } finally {
-    loading.value = false;
+    if(version===loadVersion)loading.value = false;
   }
 }
 
 async function viewStudentDetail(row) {
+  const version=++detailVersion;
   detailDrawer.value = true;
   detailLoading.value = true;
   detailTitle.value = `${row.realName} 的综测详情`;
   detailResult.value = null;
   try {
     const res = await getStudentEvaluation(row.studentId, { academicYear: selAcademicYear.value, semester: selSemester.value });
-    detailResult.value = res;
+    if(version===detailVersion)detailResult.value = res;
   } catch (e) {
-    ElMessage.error('加载详情失败：' + (e.message || ''));
+    if(version===detailVersion)ElMessage.error('加载详情失败：' + (e.message || ''));
   } finally {
-    detailLoading.value = false;
+    if(version===detailVersion)detailLoading.value = false;
   }
 }
 
 function resetFilter() {
+  loadVersion++;detailVersion++;detailDrawer.value=false;detailResult.value=null;loading.value=false;
   selClassId.value = null;
   selStudentId.value = null;
   viewMode.value = 'class';

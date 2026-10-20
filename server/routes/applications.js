@@ -15,6 +15,9 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const { canonicalAiExtraData } = require('../utils/materialReviewReceipt');
+const { scanMaterialIntegrity, integrityExtra } = require('../services/materialIntegrity');
+const { UPLOAD_ROOT } = require('../middleware/upload');
+const checkMaterialIntegrity = (studentId, candidate, excludeId) => scanMaterialIntegrity({studentId:Number(studentId),candidate,excludeId,Application,root:UPLOAD_ROOT,secret:config.jwt.secret});
 
 router.use(auth);
 
@@ -695,6 +698,8 @@ router.post('/', requireStudent, upload.array('photos', 10), compressImages, asy
       approvalNo = generateApplicationId(new Date(), Date.now() % 1000000);
     }
 
+    const integrity = await checkMaterialIntegrity(student.id,{title,eventDate,certificateNo,proofUrl:photos});
+    const confirmedExtra = canonicalAiExtraData(extraData, student, photos, config.jwt.secret, { ...req.body, score: realApplyScore, moduleId: realModuleId });
     const app = await Application.create({
       approvalNo,
       moduleId: realModuleId,
@@ -711,7 +716,7 @@ router.post('/', requireStudent, upload.array('photos', 10), compressImages, asy
       otherDescription: otherDescription || null,
       score: Number(realApplyScore || 0),
       attachPhotos: photos.length > 0 ? photos : null,
-      extraData: canonicalAiExtraData(extraData, student, photos, config.jwt.secret, { ...req.body, score: realApplyScore, moduleId: realModuleId }),
+      extraData: integrityExtra(confirmedExtra,integrity,req.body.duplicateReason,!isDraft),
       status: isDraft ? 'draft' : (startApproving ? 'approving' : 'approved'),
       currentLevel: isDraft ? 0 : (startApproving ? 1 : 0),
       totalLevels,
@@ -1283,12 +1288,15 @@ router.get('/counselor/honors/export', requireCounselor, async (req, res, next) 
 // =========================================
 router.post('/check-duplicate', requireStudent, async (req, res, next) => {
   try {
-    const { moduleId, title, eventDate } = req.body || {};
-    if (!moduleId || !title) return res.success({ duplicate: false });
+    const { moduleId, title, eventDate, certificateNo, proofUrl, excludeId } = req.body || {};
+    if(excludeId){if(!Number.isSafeInteger(Number(excludeId))||Number(excludeId)<1)throw new AppError('申报编号无效',400);const existing=await Application.findByPk(Number(excludeId));if(!existing || existing.studentId!==req.userId) throw new AppError('无权核对该申报',403);}
     const where = { studentId: req.userId, moduleId, title, status: { [Op.notIn]: ['draft','revoked'] } };
+    if(excludeId) where.id={[Op.ne]:Number(excludeId)};
     if (eventDate) where.eventDate = eventDate;
-    const dup = await Application.findOne({ where, attributes: ['id','title','status'] });
-    res.success({ duplicate: !!dup, existingId: dup?.id || null, existingStatus: dup?.status || null });
+    const dup = moduleId && title ? await Application.findOne({ where, attributes: ['id','title','status'] }) : null;
+    const scan=await checkMaterialIntegrity(req.userId,{title,eventDate,certificateNo,proofUrl},excludeId);
+    res.success({ duplicate: !!dup, existingId: dup?.id || null, existingStatus: dup?.status || null,
+      materialMatches:scan.matches,incomplete:scan.incomplete,notice:scan.notice });
   } catch (err) { next(err); }
 });
 
@@ -2230,6 +2238,8 @@ router.put('/:id', requireStudent, upload.array('photos', 10), compressImages, a
 
     // 显式「提交申报」标志：将草稿/驳回/退回单据提交进入审批流程（不调用 /resubmit 也能完成提交）
     const wantSubmit = submit === true || submit === 'true' || saveDraft === false;
+    const integrity=await checkMaterialIntegrity(req.userId,app,app.id);
+    app.extraData=integrityExtra(app.extraData,integrity,req.body.duplicateReason ?? app.extraData?.duplicateReview?.reason,wantSubmit);
     if (wantSubmit && ['draft', 'rejected', 'returned'].includes(app.status)) {
       // 提交前校验学期是否开启
       const student = req.user;
@@ -2394,6 +2404,8 @@ router.post('/:id/resubmit', requireStudent, upload.array('photos', 10), compres
 
     app.extraData = canonicalAiExtraData(req.body.extraData === undefined ? app.extraData : req.body.extraData,
       req.user, app.attachPhotos || [], config.jwt.secret, { ...app.toJSON(), ...req.body, level: app.awardLevel, status: 'approving' });
+    const integrity=await checkMaterialIntegrity(req.userId,app,app.id);
+    app.extraData=integrityExtra(app.extraData,integrity,req.body.duplicateReason ?? app.extraData?.duplicateReview?.reason,true);
 
     // 一级审批人固定为班级管理员
     const cls = await Class.findByPk(student.classId);

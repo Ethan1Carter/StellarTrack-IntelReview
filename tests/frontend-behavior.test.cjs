@@ -309,3 +309,29 @@ test('规则入口只预选仍然适用的模块，不根据上限代填分值�
   try {for(const mounted of fixture.mounted)await mounted();assert.equal(fixture.state.selectedModule.value.id,3);assert.equal(fixture.state.form.score,null);assert.equal(submissions,0);}
   finally{fixture.stop();}
 });
+
+test('同成果核对切换材料后清空旧提示，迟到结果不能阻止新申报',async()=>{
+  const pending=[];const fixture=component('src/views/application/Apply.vue',{'@/api/applications':{checkDuplicate:()=>new Promise(resolve=>pending.push(resolve))}});
+  try{const s=fixture.state;s.selectedModule.value={id:1};s.form.title='旧成果';const first=s.onTitleBlur();s.form.title='新成果';const second=s.onTitleBlur();pending[1]({duplicate:false,materialMatches:[]});await second;pending[0]({duplicate:true,existingId:1,materialMatches:[{id:1}]});await first;assert.equal(s.dupCheck.duplicate,false);assert.equal(s.dupCheck.materialMatches.length,0);}
+  finally{fixture.stop();}
+});
+
+test('试算中修改待保存配置会作废旧结果，不触发配置保存',async()=>{
+  let resolve;const fixture=component('src/views/manage/EvaluationConfig.vue',{'@/api/evaluation':{previewEvaluationConfig:()=>new Promise(done=>resolve=done)},'@/api/college':{}});
+  try{const s=fixture.state;const pending=s.runPreview();s.config.f1Base=10;resolve({rows:[{before:1,after:2}]});await pending;assert.equal(s.previewResult.value,null);assert.equal(s.previewLoading.value,false);}
+  finally{fixture.stop();}
+});
+
+test('待办刷新失败清除过期事项并显示错误，成长待办链接恢复原学年学期',async()=>{
+  const fixture=component('src/views/WorkItems.vue',{'@/api/work-items':{getWorkItems:async()=>{throw new Error('network unavailable');}},'@/api/message':{}});
+  try{fixture.state.data.value={items:[{key:'old'}],counts:{total:1}};await fixture.state.load();assert.equal(fixture.state.data.value.items.length,0);assert.match(fixture.state.error.value,/network/);}
+  finally{fixture.stop();}
+  const growth=component('src/views/ai/GrowthPlan.vue',{'vue-router':{useRoute:()=>({query:{academicYear:'2025-2026',semester:'second'}})}});
+  try{assert.equal(growth.state.academicYear.value,'2025-2026');assert.equal(growth.state.semester.value,'second');}finally{growth.stop();}
+});
+
+test('计分解释随筛选作废，旧学生响应不能覆盖当前学生',async()=>{
+  const pending=[];const fixture=component('src/views/score/EvaluationResult.vue',{'@/components/ScoreExplanation.vue':{},'@/api/evaluation':{getStudentEvaluation:id=>new Promise(resolve=>pending.push({id,resolve}))}});
+  try{const s=fixture.state;s.viewMode.value='student';s.selStudentId.value=9;const first=s.loadData();s.selStudentId.value=10;const second=s.loadData();pending[1].resolve({studentId:10,calculation:{version:'new'}});await second;pending[0].resolve({studentId:9,calculation:{version:'old'}});await first;assert.equal(s.result.value.studentId,10);}
+  finally{fixture.stop();}
+});
