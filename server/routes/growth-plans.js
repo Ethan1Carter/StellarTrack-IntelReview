@@ -5,7 +5,7 @@ const { assertStudentInScope, narrowClassIds } = require('../middleware/scope');
 const { requireStudent, requireRole } = require('../middleware/auth');
 const { resolveAcademicTerm } = require('../utils');
 const { AppError } = require('../middleware/errorHandler');
-const { buildGrowthPlan, updateTask } = require('../services/growthPlan');
+const { buildGrowthPlan, updateTask, adjustTaskDefinition } = require('../services/growthPlan');
 const router = express.Router();
 const reviewers = ['counselor', 'college_admin', 'school_admin', 'super_admin'];
 const requireReviewer = requireRole(...reviewers);
@@ -28,12 +28,12 @@ async function studentInScope(req, inputId) {
   if (!student || !['student', 'class_admin'].includes(student.role)) throw new AppError('请选择学生账号', 400);
   return student;
 }
-async function preview(studentId, period) {
+async function preview(studentId, period, preferences) {
   const where = { studentId, ...period };
   const [summary, applications] = await Promise.all([
     ScoreSummary.findOne({ where }), Application.findAll({ where, attributes: ['status', 'finalReviewAction', 'createdAt'] })
   ]);
-  return buildGrowthPlan({ summary, applications, ...period });
+  return buildGrowthPlan({ summary, applications, ...period, preferences });
 }
 
 router.get('/students', requireReviewer, async (req, res, next) => {
@@ -57,12 +57,18 @@ router.get('/', async (req, res, next) => {
     res.success({ student, plan, preview: plan ? null : await preview(student.id, period) });
   } catch (error) { next(error); }
 });
+router.post('/preview', requireStudent, async (req, res, next) => {
+  try {
+    const student = await studentInScope(req);
+    res.success(await preview(student.id, term(req.body), req.body.preferences));
+  } catch (error) { next(error); }
+});
 router.post('/', requireStudent, async (req, res, next) => {
   try {
     const student = await studentInScope(req);
     if (!student.classId || !student.collegeId) throw new AppError('请先完善所属院系和班级', 400);
     const period = term(req.body);
-    const snapshot = await preview(student.id, period);
+    const snapshot = await preview(student.id, period, req.body.preferences);
     const [plan] = await GrowthPlan.findOrCreate({ where: { studentId: student.id, ...period },
       defaults: { collegeId: student.collegeId, classId: student.classId, source: 'rules',
         diagnosis: snapshot.diagnosis, goals: snapshot.goals, tasks: snapshot.tasks, revision: 1 } });
@@ -70,7 +76,7 @@ router.post('/', requireStudent, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-function changeTask(reviewing) {
+function changeTask(reviewing, adjusting = false) {
   return async (req, res, next) => {
     try {
       const plan = await sequelize.transaction(async transaction => {
@@ -78,18 +84,20 @@ function changeTask(reviewing) {
         if (!Number.isSafeInteger(id) || id < 1) throw new AppError('计划ID无效', 400);
         const row = await GrowthPlan.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
         if (!row) throw new AppError('成长计划不存在', 404);
-        if (reviewing) {
+        if (reviewing || adjusting) {
           if (row.studentId === req.userId) throw new AppError('不能核验本人的成长任务', 403);
           await studentInScope(req, row.studentId);
         } else if (row.studentId !== req.userId) throw new AppError('只能修改本人的成长任务', 403);
-        const changes = updateTask(row, req.params.taskId, req.body, req, reviewing);
+        const changes = adjusting ? adjustTaskDefinition(row, req.params.taskId, req.body, req)
+          : updateTask(row, req.params.taskId, req.body, req, reviewing);
         await row.update(changes, { transaction });
         return row;
       });
-      res.success(plan, reviewing ? '核验意见已保存' : '成长进度已保存');
+      res.success(plan, adjusting ? '任务调整已保存' : reviewing ? '核验意见已保存' : '成长进度已保存');
     } catch (error) { next(error); }
   };
 }
 router.patch('/:id/tasks/:taskId', requireStudent, changeTask(false));
 router.post('/:id/tasks/:taskId/review', requireReviewer, changeTask(true));
+router.patch('/:id/tasks/:taskId/definition', requireReviewer, changeTask(false, true));
 module.exports = router;

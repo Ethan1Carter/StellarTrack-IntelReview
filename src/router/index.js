@@ -59,6 +59,10 @@ const routes = [
         path: 'growth-plan', name: 'GrowthPlan', component: () => import('@/views/ai/GrowthPlan.vue'),
         meta: { title: '成长行动计划', icon: 'TrendCharts', roles: ALL_AUTHENTICATED }
       },
+      {
+        path: 'rule-guide', name: 'RuleGuide', component: () => import('@/views/ai/RuleGuide.vue'),
+        meta: { title: '规则查询与申报指引', icon: 'Reading', roles: ROLE_GROUPS.STUDENT_LIKE }
+      },
 
       // ========== 申报相关 ==========
       {

@@ -268,3 +268,44 @@ test('审核页码只能定位分析时的对应附件，切换申报清空旧�
     assert.equal(state.previewSrc.value, '');
   } finally { fixture.stop(); }
 });
+
+test('规则查询输入变化即清空旧结论，迟到响应不能冒充当前问题的依据', async () => {
+  const pending = [];
+  const fixture = component('src/views/ai/RuleGuide.vue', { '@/api/rule-guide': { queryRuleGuide:question=>new Promise(resolve=>pending.push({question,resolve})) } });
+  try {
+    const state=fixture.state;state.question.value='志愿服务';const first=state.search();
+    state.question.value='体育比赛';const second=state.search();
+    pending[1].resolve({question:'体育比赛',results:[{id:2}]});await second;
+    pending[0].resolve({question:'志愿服务',results:[{id:1}]});await first;
+    assert.equal(state.result.value.results[0].id,2);
+    state.question.value='竞赛';assert.equal(state.result.value,null);
+  } finally { fixture.stop(); }
+});
+
+test('成长偏好变化后必须重新预览，保存采用预览对应偏好，旧预览不能覆盖新选择', async () => {
+  const pending=[];let saved;
+  const fixture=component('src/views/ai/GrowthPlan.vue',{
+    '@/stores/user': {useUserStore:()=>({role:'student',userId:9})},
+    '@/api/growth-plans': { previewGrowthPlan:body=>new Promise(resolve=>pending.push({body,resolve})),createGrowthPlan:async body=>{saved=body;return{id:1};} }
+  });
+  try {
+    const state=fixture.state;state.preferences.focusKey='arts';state.preferences.goal=' 整理作品 ';
+    const first=state.previewChoices();state.preferences.focusKey='labor';
+    pending[0].resolve({diagnosis:{preferences:pending[0].body.preferences}});await first;
+    assert.equal(state.preview.value,null);await state.startPlan();assert.equal(saved,undefined);
+    const second=state.previewChoices();pending[1].resolve({diagnosis:{preferences:{...pending[1].body.preferences,goal:'整理作品'}}});await second;
+    assert.equal(state.preferencesDirty.value,false);await state.startPlan();
+    assert.equal(saved.preferences.focusKey,'labor');assert.equal(saved.preferences.weeklyMinutes,60);
+  } finally { fixture.stop(); }
+});
+
+test('规则入口只预选仍然适用的模块，不根据上限代填分值或自动提交', async () => {
+  let submissions=0;
+  const fixture=component('src/views/application/Apply.vue',{
+    'vue-router': {useRouter:()=>({push(){}}),useRoute:()=>({query:{from:'rule-guide',moduleId:'3'}})},
+    '@/api/modules':{listActiveModules:async()=>[{id:3,name:'合成模块',singleMaxScore:5,yearlyMaxScore:10}]},
+    '@/api/applications':{getMySemesters:async()=>[],createApplication:async()=>submissions++}
+  });
+  try {for(const mounted of fixture.mounted)await mounted();assert.equal(fixture.state.selectedModule.value.id,3);assert.equal(fixture.state.form.score,null);assert.equal(submissions,0);}
+  finally{fixture.stop();}
+});

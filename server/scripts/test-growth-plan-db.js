@@ -56,8 +56,13 @@ async function main() {
       return { status: response.status, ...(await response.json()) };
     }
     const period = { academicYear: '2026-2027', semester: 'first' };
+    const preferences = { focusKey:'arts', goal:'整理已有作品与反思', weeklyMinutes:30, recordStatus:'record_only' };
+    const personalized = await request('/preview', 'POST', { ...period, preferences });
+    assert.equal(personalized.status, 200); assert.equal(personalized.data.diagnosis.focus.key, 'arts');
+    assert.equal(await GrowthPlan.count(), 0); // 预览不创建正式计划。
     assert.equal((await request('/?studentId=9', 'GET', null, 10)).status, 403);
-    const first = await request('/', 'POST', period); assert.equal(first.status, 200); let plan = first.data;
+    const first = await request('/', 'POST', {...period,preferences}); assert.equal(first.status, 200); let plan = first.data;
+    assert.deepEqual(plan.diagnosis.preferences, preferences);
     assert.equal((await request('/', 'POST', period)).data.id, plan.id);
     const task = plan.tasks[0]; const endpoint = `/${plan.id}/tasks/${task.id}`;
     assert.equal((await request(endpoint, 'PATCH', { revision: 1, status: 'in_progress' }, 10)).status, 403);
@@ -74,8 +79,21 @@ async function main() {
     const concurrent = await Promise.all([request(next, 'PATCH', { revision: 3, status: 'in_progress', notes: '第一次保存' }),
       request(next, 'PATCH', { revision: 3, status: 'in_progress', notes: '另一次保存' })]);
     assert.deepEqual(concurrent.map(item => item.status).sort(), [200, 409]);
+    const current = concurrent.find(item => item.status === 200).data;
+    const definition = { revision:current.revision, title:'结合课程安排完善作品反思', dueAt:'2026-11-10', reason:'尊重学生本周课程安排' };
+    assert.equal((await request(next+'/definition','PATCH',definition,9)).status,403);
+    assert.equal((await request(next+'/definition','PATCH',definition,7)).status,403);
+    const adjusted = await request(next+'/definition','PATCH',definition,8);
+    assert.equal(adjusted.status,200);
+    assert.equal(adjusted.data.tasks[1].history.length,2);
+    assert.equal(adjusted.data.tasks[1].notes,current.tasks[1].notes);
+    assert.equal((await request(next+'/definition','PATCH',definition,8)).status,409);
+    assert.equal((await request(endpoint+'/definition','PATCH',{...definition,revision:adjusted.data.revision},8)).status,409);
+    const reloaded = await request('/?academicYear=2026-2027&semester=first');
+    assert.equal(reloaded.data.plan.tasks[1].title,definition.title);
+    assert.deepEqual(reloaded.data.plan.diagnosis.preferences,preferences);
     assert.equal((await request('/students', 'GET', null, 7)).data.list.length, 0);
-    console.log('真实 PostgreSQL 隔离验证通过：计划幂等创建、权限边界、提交核验、刷新持久化、历史记录及并发版本冲突。');
+    console.log('真实 PostgreSQL 隔离验证通过：个性化预览不写库、偏好持久化、幂等创建、权限边界、提交核验、教师调整留痕及并发版本冲突。');
   } finally {
     if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
     if (created && /^xinggui_test_growth_[a-f0-9]{12}$/.test(schema)) await sequelize.dropSchema(schema, { cascade: true });

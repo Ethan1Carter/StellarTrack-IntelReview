@@ -11,6 +11,16 @@
       <el-select v-model="semester" aria-label="学期" @change="loadPlan"><el-option label="第一学期" value="first" /><el-option label="第二学期" value="second" /><el-option label="年度" value="annual" /></el-select>
       <el-button @click="loadPlan" :loading="loading">刷新记录</el-button>
     </section>
+    <section v-if="!isReviewer && !plan" class="card preference-panel">
+      <div class="preference-heading"><div><h2>先确定适合自己的安排</h2><p>没有记录不等于没有参与，可选择补录已有经历或尝试新的实践。</p></div><el-button type="primary" plain :loading="previewing" :disabled="loading || saving" @click="previewChoices">预览我的计划</el-button></div>
+      <el-form label-position="top" class="preference-form" :disabled="loading || saving">
+        <el-form-item label="本期希望关注的方向"><el-select v-model="preferences.focusKey" aria-label="成长方向" placeholder="按当前记录提供起点"><el-option label="按当前记录提供起点" value="" /><el-option v-for="item in directionOptions" :key="item.key" :label="item.name" :value="item.key" /></el-select></el-form-item>
+        <el-form-item label="这个方向的参与情况"><el-select v-model="preferences.recordStatus" aria-label="参与情况"><el-option label="先确认已有参与情况" value="unsure" /><el-option label="已经参与，主要补充记录" value="record_only" /><el-option label="希望尝试新的实践" value="new_practice" /></el-select></el-form-item>
+        <el-form-item label="每周预计可投入时间"><el-select v-model="preferences.weeklyMinutes" aria-label="每周可投入时间"><el-option v-for="minutes in [30,60,120,180]" :key="minutes" :value="minutes" :label="`约 ${minutes} 分钟`" /></el-select></el-form-item>
+        <el-form-item label="我的具体目标（选填）" class="personal-goal"><el-input v-model="preferences.goal" maxlength="200" show-word-limit placeholder="例如：整理已有志愿服务经历，并完成一次反思" /></el-form-item>
+      </el-form>
+      <p v-if="preferencesDirty" class="preference-hint">偏好已调整，请先预览，再保存正式计划。</p>
+    </section>
     <el-alert v-if="error" type="error" :title="error" show-icon :closable="false" class="growth-notice" />
     <el-empty v-if="isReviewer && !studentId" description="选择一名学生，查看行动进度与待核验证据" />
     <section v-else v-loading="loading" class="journey-layout">
@@ -19,8 +29,11 @@
         <h2>{{ snapshot.diagnosis?.focus?.name || '形成成长记录' }}</h2>
         <p>{{ snapshot.diagnosis?.explanation }}</p>
         <div class="context-source">规则辅助建议 · {{ academicYear }} {{ semesterLabel }}</div>
+        <p v-if="snapshot.diagnosis?.focusReason" class="planning-context">{{ snapshot.diagnosis.focusReason }}</p>
+        <p v-if="snapshot.diagnosis?.arrangement" class="planning-context">{{ snapshot.diagnosis.arrangement }}</p>
+        <p v-if="plan?.diagnosis?.preferences" class="planning-context">保存时参与情况：{{ participationText(plan.diagnosis.preferences.recordStatus) }}</p>
         <div v-for="goal in snapshot.goals || []" :key="goal.title" class="growth-goal"><strong>{{ goal.title }}</strong><p>{{ goal.target }}</p></div>
-        <el-button v-if="!plan && !isReviewer" type="primary" :loading="saving" @click="startPlan">保存并开始行动</el-button>
+        <el-button v-if="!plan && !isReviewer" type="primary" :loading="saving" :disabled="preferencesDirty || previewing || loading" @click="startPlan">保存并开始行动</el-button>
         <el-alert v-if="!plan && isReviewer" type="info" title="学生尚未保存本期计划，下方为建议预览" :closable="false" />
         <p class="quiet-note">任务核验用于记录成长过程，不会自动改变综测分数。</p>
       </aside>
@@ -36,6 +49,7 @@
             <div v-if="plan" class="task-actions">
               <el-button v-if="!isReviewer && ['todo', 'in_progress', 'returned'].includes(task.status)" type="primary" plain @click="editTask(task)">{{ task.status === 'todo' ? '记录行动' : '补充记录' }}</el-button>
               <el-button v-if="isReviewer && task.status === 'submitted'" type="primary" @click="openReview(task)">核验证据并反馈</el-button>
+              <el-button v-if="isReviewer && ['todo','in_progress','returned'].includes(task.status)" plain @click="openAdjustment(task)">调整任务与日期</el-button>
               <el-button v-if="task.history?.length" text @click="historyTask = task">查看过程记录</el-button>
             </div>
           </div>
@@ -47,12 +61,17 @@
         <el-form-item label="证明材料（图片或 PDF，最多 5 份）"><el-upload action="#" :auto-upload="false" v-model:file-list="fileList" :limit="5" accept="image/*,.pdf" :on-change="uploadEvidence" :on-remove="removeEvidence" :on-exceed="onExceed"><el-button :loading="uploading">选择证明材料</el-button></el-upload></el-form-item></el-form>
       <template #footer><el-button :disabled="saving || uploading" @click="saveTask('in_progress')">保存进度</el-button><el-button type="primary" :loading="saving" :disabled="uploading || fileList.some(file => file.status === 'fail')" @click="saveTask('submitted')">提交教师核验</el-button></template>
     </el-dialog>
+    <el-dialog v-model="adjustVisible" title="调整成长任务" width="min(580px, 94vw)" :close-on-click-modal="false">
+      <p class="quiet-note">只调整任务内容与截止日期，已有执行记录和证明会继续保留。</p>
+      <el-form label-position="top"><el-form-item label="任务名称"><el-input v-model="definition.title" maxlength="200" show-word-limit /></el-form-item><el-form-item label="截止日期"><el-date-picker v-model="definition.dueAt" type="date" value-format="YYYY-MM-DD" aria-label="任务截止日期" /></el-form-item><el-form-item label="调整原因"><el-input v-model="definition.reason" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="说明如何结合学生目标与实际情况调整" /></el-form-item></el-form>
+      <template #footer><el-button :disabled="saving" @click="adjustVisible=false">取消</el-button><el-button type="primary" :loading="saving" @click="saveAdjustment">保存调整并留痕</el-button></template>
+    </el-dialog>
     <el-dialog v-model="reviewVisible" title="教师核验与反馈" width="min(580px, 94vw)" :close-on-click-modal="false">
       <p>请核对任务中的执行记录及证明，再给出反馈。</p><el-input v-model="feedback" type="textarea" :rows="4" maxlength="1000" show-word-limit placeholder="填写核验意见；退回时说明需要补充什么" />
       <template #footer><el-button :disabled="saving" @click="sendReview('returned')">退回补充</el-button><el-button type="primary" :loading="saving" @click="sendReview('completed')">确认完成</el-button></template>
     </el-dialog>
     <el-dialog :model-value="!!historyTask" title="成长过程记录" width="min(600px, 94vw)" @close="historyTask = null">
-      <el-timeline><el-timeline-item v-for="(event, i) in historyTask?.history || []" :key="i" :timestamp="formatTime(event.at)"><strong>{{ event.actorName }} · {{ statusText(event.status) }}</strong><p>{{ event.message }}</p><p v-if="event.notes">{{ event.notes }}</p><a v-for="(url, j) in event.attachments || []" :key="url" :href="url" target="_blank" rel="noopener noreferrer">当时的证明 {{ j + 1 }} </a></el-timeline-item></el-timeline>
+      <el-timeline><el-timeline-item v-for="(event, i) in historyTask?.history || []" :key="i" :timestamp="formatTime(event.at)"><strong>{{ event.actorName }} · {{ statusText(event.status) }}</strong><p>{{ event.message }}</p><p v-if="event.previousDefinition">调整前：{{ event.previousDefinition.title }}（{{ event.previousDefinition.dueAt }} 前）</p><p v-if="event.definition">调整后：{{ event.definition.title }}（{{ event.definition.dueAt }} 前）</p><p v-if="event.notes">{{ event.notes }}</p><a v-for="(url, j) in event.attachments || []" :key="url" :href="url" target="_blank" rel="noopener noreferrer">当时的证明 {{ j + 1 }} </a></el-timeline-item></el-timeline>
     </el-dialog>
   </div>
 </template>
@@ -63,7 +82,7 @@ import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import WorkspaceHero from '@/components/WorkspaceHero.vue';
 import { useUserStore } from '@/stores/user';
-import { getGrowthPlan, createGrowthPlan, getGrowthStudents, updateGrowthTask, reviewGrowthTask } from '@/api/growth-plans';
+import { getGrowthPlan, createGrowthPlan, getGrowthStudents, updateGrowthTask, reviewGrowthTask, previewGrowthPlan, adjustGrowthTask } from '@/api/growth-plans';
 import { uploadProof } from '@/api/applications';
 const userStore = useUserStore();
 const route = useRoute();
@@ -76,23 +95,34 @@ const semesterLabel = computed(() => ({ first: '第一学期', second: '第二�
 const studentId = ref(isReviewer.value ? Number(route.query.studentId) || null : userStore.userId);
 const students = ref([]); const searching = ref(false); const loading = ref(false); const saving = ref(false); const error = ref('');
 const plan = ref(null); const preview = ref(null); const studentName = ref('');
+const preferences = reactive({ focusKey:'', goal:'', weeklyMinutes:60, recordStatus:'unsure' });
+const directionOptions = [{key:'morality',name:'德育实践'},{key:'academy',name:'学习与创新'},{key:'sports',name:'体育健康'},{key:'arts',name:'美育实践'},{key:'labor',name:'劳动与志愿服务'}];
+const previewing = ref(false);
+const preferencesKey = () => JSON.stringify({ ...preferences, goal:preferences.goal.trim() });
+const preferencesDirty = computed(() => preferencesKey() !== JSON.stringify(preview.value?.diagnosis?.preferences));
+const participationText = value => ({unsure:'先确认已有参与情况',record_only:'已经参与，补充记录',new_practice:'尝试新的实践'})[value] || '未填写';
+const adjustVisible = ref(false); const adjustingTask = ref(null);
+const definition = reactive({ title:'', dueAt:'', reason:'' });
 const snapshot = computed(() => plan.value || preview.value);
 const tasks = computed(() => plan.value?.tasks || preview.value?.tasks || []);
 const completedCount = computed(() => tasks.value.filter(task => task.status === 'completed').length);
 const editVisible = ref(false); const reviewVisible = ref(false); const editingTask = ref(null); const historyTask = ref(null);
 const draft = reactive({ notes: '' }); const feedback = ref(''); const fileList = ref([]); const uploading = ref(false);
-let loadVersion = 0; let searchVersion = 0; let draftVersion = 0; let uploads = 0;
+let loadVersion = 0; let searchVersion = 0; let draftVersion = 0; let previewVersion = 0; let uploads = 0;
 const statusText = status => ({ todo: '待开始', in_progress: '进行中', submitted: '待教师核验', completed: '已核验完成', returned: '待补充' })[status] || status;
 const statusType = status => ({ completed: 'success', submitted: 'warning', returned: 'danger', todo: 'info' })[status] || 'primary';
 const formatTime = value => value ? new Date(value).toLocaleString('zh-CN') : '';
 const period = () => ({ academicYear: academicYear.value, semester: semester.value });
 async function loadPlan() {
-  const version = ++loadVersion; plan.value = null; preview.value = null; error.value = ''; editVisible.value = false; reviewVisible.value = false; draftVersion++;
+  const version = ++loadVersion; plan.value = null; preview.value = null; error.value = ''; editVisible.value = false; reviewVisible.value = false; adjustVisible.value = false; historyTask.value = null; draftVersion++; previewVersion++; previewing.value = false;
+  Object.assign(preferences, { focusKey:'', goal:'', weeklyMinutes:60, recordStatus:'unsure' });
   if (!studentId.value) { loading.value = false; return; }
   loading.value = true;
   try { const data = await getGrowthPlan({ ...period(), studentId: studentId.value });
     if (version !== loadVersion) return;
     plan.value = data.plan; preview.value = data.preview; studentName.value = data.student.realName;
+    const savedPreferences = (data.plan || data.preview)?.diagnosis?.preferences;
+    if (savedPreferences) Object.assign(preferences, savedPreferences);
   } catch (err) { if (version === loadVersion) error.value = err.message || '读取计划失败，请重试'; }
   finally { if (version === loadVersion) loading.value = false; }
 }
@@ -103,9 +133,31 @@ async function searchStudents(keyword = '') {
   finally { if (version === searchVersion) searching.value = false; }
 }
 async function startPlan() {
+  if (saving.value || previewing.value || preferencesDirty.value || loading.value) return;
   const version = loadVersion; saving.value = true;
-  try { const data = await createGrowthPlan(period()); if (version === loadVersion) { plan.value = data; preview.value = null; ElMessage.success('成长计划已保存'); } }
+  try { const data = await createGrowthPlan({ ...period(), preferences:{...preferences} }); if (version === loadVersion) { plan.value = data; preview.value = null; ElMessage.success('成长计划已保存'); } }
   catch (err) { ElMessage.error(err.message || '保存计划失败'); } finally { saving.value = false; }
+}
+async function previewChoices() {
+  if (plan.value || isReviewer.value || loading.value || saving.value) return;
+  const version = loadVersion; const requestVersion = ++previewVersion; const key = preferencesKey();
+  previewing.value = true; error.value = '';
+  try { const data = await previewGrowthPlan({ ...period(), preferences:{...preferences} });
+    if (version === loadVersion && requestVersion === previewVersion && key === preferencesKey()) preview.value = data;
+  } catch (err) { if (version === loadVersion && requestVersion === previewVersion) error.value = err.message || '预览失败，请重试'; }
+  finally { if (requestVersion === previewVersion) previewing.value = false; }
+}
+function openAdjustment(task) {
+  adjustingTask.value = task; Object.assign(definition, {title:task.title,dueAt:task.dueAt,reason:''}); adjustVisible.value = true;
+}
+async function saveAdjustment() {
+  if (!plan.value || !adjustingTask.value || saving.value) return;
+  if (definition.title.trim().length < 2 || !definition.dueAt || definition.reason.trim().length < 2) return ElMessage.warning('请填写任务名称、截止日期及至少 2 字的调整原因');
+  const version = loadVersion; saving.value = true;
+  try { const data = await adjustGrowthTask(plan.value.id, adjustingTask.value.id, { revision:plan.value.revision, ...definition });
+    if (version === loadVersion) { plan.value = data; adjustVisible.value = false; ElMessage.success('任务调整已保存，过程记录已保留'); }
+  } catch (err) { if (version === loadVersion) ElMessage.error(err.message || '调整失败，请刷新后重试'); }
+  finally { saving.value = false; }
 }
 function editTask(task) {
   draftVersion++; editingTask.value = task; draft.notes = task.notes || ''; uploads = 0; uploading.value = false;
@@ -172,4 +224,5 @@ onMounted(async () => { if (isReviewer.value) await searchStudents(); await load
 @media(max-width:900px) { .journey-layout { grid-template-columns:1fr; }.journey-context { position:static; } }
 @media(max-width:520px) { .growth-filters .el-select { width:100%; }.task-milestone { flex-basis:68px; padding:20px 8px; }.task-milestone time { font-size:10px; }.task-main { padding:16px; }.task-heading { flex-direction:column; }.journey-heading { align-items:flex-start; flex-direction:column; } }
 a:focus-visible { outline:2px solid var(--blue); outline-offset:3px; }
+.preference-panel { padding:22px; margin:16px 0; }.preference-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }.preference-heading h2 { font-size:17px; margin:0; }.preference-heading p,.preference-hint,.planning-context { font-size:12px; color:var(--muted,#63758b); line-height:1.8; }.preference-form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 16px; margin-top:16px; }.preference-form .el-select { width:100%; }.personal-goal { grid-column:1/-1; }.preference-hint { color:#b45309; margin:0; }@media(max-width:700px) { .preference-heading { align-items:flex-start; flex-direction:column; }.preference-form { grid-template-columns:minmax(0,1fr); }.preference-panel { padding:18px 14px; } }
 </style>

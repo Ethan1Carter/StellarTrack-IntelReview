@@ -9,15 +9,19 @@ function moduleEligible(module, user) {
   return true;
 }
 
+function moduleRuleVersion(module) {
+  return module ? crypto.createHash('sha256').update(JSON.stringify([
+    module.id, String(module.ruleDescription || '').trim(), module.singleMaxScore, module.yearlyMaxScore, module.updatedAt
+  ])).digest('hex').slice(0, 12) : null;
+}
+
 function applyScoreBasis(review, value, modules) {
   const module = modules.find(item => Number(item.id) === Number(review.suggestedModuleId));
   const rule = String(module?.ruleDescription || '').trim();
   const quote = typeof value?.ruleReference?.quote === 'string' ? value.ruleReference.quote.trim().slice(0, 1200) : '';
   const referenced = rule && quote.replace(/[\s\p{P}\p{S}]/gu, '').length >= 6 && rule.includes(quote)
     && Number(value.ruleReference.moduleId) === Number(module.id);
-  const version = module ? crypto.createHash('sha256').update(JSON.stringify([
-    module.id, rule, module.singleMaxScore, module.yearlyMaxScore, module.updatedAt
-  ])).digest('hex').slice(0, 12) : null;
+  const version = moduleRuleVersion(module);
   const scoreBasis = { status: referenced ? 'referenced' : 'missing',
     source: module ? `管理员配置的「${module.name}」加分标准` : '尚未匹配有效模块',
     moduleId: module?.id || null, version, updatedAt: module?.updatedAt || null,
@@ -29,4 +33,4 @@ function applyScoreBasis(review, value, modules) {
   return { ...review, scoreBasis, scoreSuggestion: referenced ? review.scoreSuggestion : null };
 }
 
-module.exports = { moduleEligible, applyScoreBasis };
+module.exports = { moduleEligible, applyScoreBasis, moduleRuleVersion };

@@ -603,6 +603,13 @@ onMounted(async () => {
     }
   } else if (route.query.from === 'ai') {
     await loadAiReview();
+  } else if (route.query.from === 'rule-guide' && route.query.moduleId) {
+    const module = activeModules.value.find(item => Number(item.id) === Number(route.query.moduleId));
+    if (module) {
+      await selectModule(module);
+      form.score = null;
+      ElMessage.info('已选择对应模块，请核对适用学期、材料和分值后提交');
+    } else ElMessage.warning('该模块已停用或不适用于本人，请重新选择申报模块');
   }
 });
 </script>

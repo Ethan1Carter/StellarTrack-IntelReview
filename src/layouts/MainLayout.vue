@@ -260,6 +260,7 @@ const MENU_CONFIG = [
   },
   // 申报
   { path: '/growth-plan', title: '成长行动计划', icon: 'TrendCharts', roles: ['student', 'class_admin', 'counselor', 'college_admin', 'school_admin', 'super_admin'] },
+  { path: '/rule-guide', title: '规则查询与申报指引', icon: 'Reading', roles: ['student', 'class_admin'] },
   { path: '/apply', title: '申报加分', icon: 'EditPen', roles: ['student', 'class_admin'] },
   { path: '/my-applications', title: '我的申报', icon: 'Tickets', roles: ['student', 'class_admin'] },
   { path: '/my-honors', title: '我的荣誉', icon: 'Medal', roles: ['student', 'class_admin'] },
