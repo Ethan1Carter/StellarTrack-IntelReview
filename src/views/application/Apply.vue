@@ -16,6 +16,9 @@
       <el-step title="填写信息" />
       <el-step title="提交完成" />
     </el-steps>
+    <el-alert v-if="aiReviewPayload" :type="aiReviewPayload.ownership?.status === 'mismatch' ? 'error' : 'warning'"
+      :closable="false" show-icon class="mb-16" title="AI 材料归属核对（最终由教师核验）"
+      :description="aiReviewPayload.ownership?.message || '该材料尚未完成归属核验，请人工核对原件和申报人信息。'" />
 
     <!-- 步骤1：选择模块 -->
     <div v-if="step === 1" class="card">
@@ -154,6 +157,9 @@
         <el-form-item label="相关链接">
           <el-input v-model="form.linkUrl" placeholder="赛事官网、新闻链接等（选填）" />
         </el-form-item>
+        <el-form-item v-if="aiReviewPayload" label="人工核对说明">
+          <el-input v-model="aiConfirmationReason" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="修改 AI 建议或归属未确认时，请说明依据，例如原件核对结果、计分规则或需教师核实的事项" />
+        </el-form-item>
 
         <el-form-item :label="selectedModule?.requirePhoto ? `证明材料（至少${selectedModule?.minPhotoCount || 1}张）` : '证明材料'">
           <el-upload
@@ -165,7 +171,7 @@
             multiple
             :limit="10"
             accept="image/*,.pdf"
-            :file-list="fileList"
+            v-model:file-list="fileList"
             :on-exceed="onExceed">
             <el-icon><Plus /></el-icon>
             <template #file="{ file }">
@@ -188,11 +194,11 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" size="large" :loading="submitting" :disabled="!canApplyAny || overSingleMax || overYearlyMax || dupCheck.duplicate"
+          <el-button type="primary" size="large" :loading="submitting" :disabled="pendingUploads > 0 || fileList.some(file => file.status === 'fail') || !canApplyAny || overSingleMax || overYearlyMax || dupCheck.duplicate"
                      @click="submit(false)">
             提交申报
           </el-button>
-          <el-button type="info" size="large" plain :loading="savingDraft" @click="submit(true)">
+          <el-button type="info" size="large" plain :loading="savingDraft" :disabled="pendingUploads > 0" @click="submit(true)">
             保存草稿
           </el-button>
           <el-button size="large" @click="step = 1">取消</el-button>
@@ -246,8 +252,10 @@ import {
 import { listActiveModules } from '@/api/modules';
 import { EditPen, Right, Plus, CircleCheckFilled, View, Document, ZoomIn, Delete, ArrowLeft, WarningFilled, Tickets } from '@element-plus/icons-vue';
 import WorkspaceHero from '@/components/WorkspaceHero.vue';
+import { useUserStore } from '@/stores/user';
 
 const route = useRoute();
+const userStore = useUserStore();
 
 const step = ref(1);
 const activeModules = ref([]);
@@ -265,6 +273,8 @@ const standardVisible = ref(false);
 const successTitle = ref('申报提交成功！');
 const successDesc = ref('');
 const aiReviewPayload = ref(null);
+const aiConfirmationReason = ref('');
+const pendingUploads = ref(0);
 
 const form = reactive({
   semesterId: null, title: '', eventDate: '', score: 1, level: '',
@@ -367,18 +377,25 @@ const onTitleBlur = async () => {
 
 const isImg = (url) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url || '');
 const onFileChange = async (uploadFile) => {
+  if (!uploadFile.raw) return;
+  pendingUploads.value += 1;
+  uploadFile.status = 'uploading';
   try {
     const fd = new FormData();
     fd.append('photos', uploadFile.raw);
     const res = await uploadProof(fd);
     const url = res?.urls?.[0] || (Array.isArray(res) ? res[0]?.url : '') || '';
     if (!url) throw new Error('上传返回数据异常');
+    if (!fileList.value.some(item => item.uid === uploadFile.uid)) return;
     uploadedUrls.value.push(url);
     uploadFile.url = url;
+    uploadFile.status = 'success';
     ElMessage.success(`上传 ${uploadFile.name} 成功`);
   } catch (e) {
     ElMessage.error(`上传 ${uploadFile.name} 失败：${e.message || '网络异常'}`);
-    fileList.value = fileList.value.filter(x => x.uid !== uploadFile.uid);
+    uploadFile.status = 'fail';
+  } finally {
+    pendingUploads.value -= 1;
   }
 };
 const onFileRemove = (file) => { removeFile(file); };
@@ -391,6 +408,9 @@ const previewFile = (file) => {
 };
 
 const submit = async (isDraft) => {
+  if (aiReviewPayload.value?.ownership?.status === 'mismatch') return ElMessage.error('证书归属不符，请更换本人证明材料后重新分析');
+  if (pendingUploads.value > 0) return ElMessage.warning('材料正在上传，请等待完成后再保存或提交');
+  if (fileList.value.some(file => file.status === 'fail')) return ElMessage.warning('请移除上传失败的材料并重新上传');
   if (!isDraft) {
     await formRef.value.validate();
     if (selectedModule.value?.requirePhoto) {
@@ -424,19 +444,31 @@ const submit = async (isDraft) => {
       linkUrl: form.linkUrl || null,
       certificateNo: form.certificateNo || null,
       proofUrl: uploadedUrls.value.length > 0 ? uploadedUrls.value.join(',') : null,
-      extraData: aiReviewPayload.value ? { aiReview: aiReviewPayload.value } : undefined
+      extraData: aiReviewPayload.value ? { aiReview: aiReviewPayload.value, aiConfirmation: { reason: aiConfirmationReason.value } } : undefined
     };
 
     let res;
     if (editingId.value) {
       // 编辑模式：调用 PUT /:id 更新
-      res = await updateApplication(editingId.value, { ...payload, saveDraft: isDraft });
+      res = await updateApplication(editingId.value, { ...payload, saveDraft: isDraft, replacePhotos: true });
     } else if (isDraft) {
       res = await saveDraftApplication(payload);
     } else {
       res = await createApplication(payload);
     }
 
+    if (aiReviewPayload.value?.sourceMaterialId != null) {
+      try {
+        const key = `xinggui.aiBatch.${userStore.userId}`;
+        const batch = JSON.parse(sessionStorage.getItem(key) || 'null');
+        const item = batch?.materials?.find(material => material.id === aiReviewPayload.value.sourceMaterialId);
+        if (item) {
+          item.submitted = !isDraft;
+          item.savedDraft = !!isDraft;
+          sessionStorage.setItem(key, JSON.stringify(batch));
+        }
+      } catch (_) { /* 申报已成功，浏览器存储失败不改变提交结果。 */ }
+    }
     if (isDraft) {
       ElMessage.success(res?.message || '草稿已保存，可在「我的申报」中继续编辑');
       step.value = 3;
@@ -464,25 +496,30 @@ const resetAll = () => {
   currentModuleScore.value = null;
   dupCheck.duplicate = false; dupCheck.existingId = null;
   aiReviewPayload.value = null;
+  aiConfirmationReason.value = '';
 };
 
 const loadAiReview = async () => {
-  const raw = sessionStorage.getItem('xinggui.aiReview');
+  const storageKey = `xinggui.aiReview.${userStore.userId}`;
+  const raw = sessionStorage.getItem(storageKey);
   if (!raw) return;
-  sessionStorage.removeItem('xinggui.aiReview');
   try {
     const review = JSON.parse(raw);
+    if (review.ownership?.status === 'mismatch') {
+      sessionStorage.removeItem(storageKey);
+      ElMessage.error('该证书归属不符，未带入申报。请更换本人材料或联系老师核验。');
+      return;
+    }
     const module = activeModules.value.find(item => Number(item.id) === Number(review.suggestedModuleId));
     if (!module) {
       ElMessage.warning('AI 建议模块当前不可申报，请手动选择模块');
-      return;
     }
     aiReviewPayload.value = review;
-    await selectModule(module);
+    if (module) await selectModule(module);
     Object.assign(form, {
       title: review.title || '',
       eventDate: review.eventDate || '',
-      score: Number(review.scoreSuggestion || 1),
+      score: review.ownership?.status === 'matched' ? Number(review.scoreSuggestion ?? 0) : 0,
       level: review.awardLevel || '',
       description: review.description || '',
       certificateNo: review.certificateNo || ''
@@ -491,6 +528,7 @@ const loadAiReview = async () => {
       uploadedUrls.value = [review.fileUrl];
       fileList.value = [{ uid: 90001, name: review.fileName || 'AI分析材料', url: review.fileUrl, status: 'success' }];
     }
+    sessionStorage.removeItem(storageKey);
     ElMessage.info('已带入 AI 分析建议，请确认后再提交');
   } catch (_error) {
     ElMessage.warning('AI 分析结果读取失败，请重新分析');
@@ -503,6 +541,8 @@ const loadForEdit = async (id) => {
     const app = await getApplicationDetail(id);
     if (!app) { ElMessage.error('申报不存在'); return; }
     editingId.value = Number(id);
+    aiReviewPayload.value = app.extraData?.aiReview || null;
+    aiConfirmationReason.value = app.extraData?.aiConfirmation?.reason || '';
     // 找到对应模块
     const mod = app.module;
     if (mod) {

@@ -47,11 +47,17 @@ export const useUserStore = defineStore('user', {
       try { this.fetchUnread(); } catch (_) {}
       return res;
     },
-    async logout() {
-      try { if (this.token) await logoutApi(); } catch (_) {}
+    async logout({ notifyServer = true } = {}) {
+      const token = this.token;
+      const userId = this.userInfo?.id;
       this.token = '';
       this.userInfo = null;
       this.unreadMessageCount = 0;
+      try {
+        for (const key of [`xinggui.aiBatch.${userId}`, `xinggui.aiReview.${userId}`, 'xinggui.aiReview']) sessionStorage.removeItem(key);
+      } catch (_) {}
+      // 失效响应不再次请求退出接口，防止 401 → logout → 401 递归。
+      try { if (token && notifyServer) await logoutApi({ headers: { Authorization: `Bearer ${token}` } }); } catch (_) {}
     },
     async refreshUser() {
       if (!this.token) return null;
@@ -59,9 +65,12 @@ export const useUserStore = defineStore('user', {
         const user = await getMeApi({ __suppressMsg: true });
         this.userInfo = user;
         return user;
-      } catch (_) {
-        this.token = '';
-        this.userInfo = null;
+      } catch (error) {
+        if (error.response?.status === 401 || error.code === 401) {
+          this.token = '';
+          this.userInfo = null;
+          this.unreadMessageCount = 0;
+        }
         return null;
       }
     },

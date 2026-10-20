@@ -16,7 +16,7 @@
  *   - **空值 fail-close**：classAdminId / counselorId / classId 为 NULL 时视为不通过，
  *     而不是跳过校验（本人访问本人除外）。
  */
-const { Class, User } = require('../models');
+const { Class, User, College } = require('../models');
 const { AppError } = require('../middleware/errorHandler');
 const { ROLES, isDeveloper } = require('../constants/roles');
 
@@ -56,7 +56,7 @@ function uniqIds(arr) {
  *
  * @param {{userId: number, role: string, originalRole: string, classId: *, collegeId: *}} identity
  * @returns {Promise<{isGlobal: boolean, role: string, userId: number, studentIds: number[]|null, classIds: number[]|null, collegeIds: number[]|null}>}
- *   isGlobal=true 表示全校可见（此时三个白名单均为 null，不参与过滤）
+ *   isGlobal=true 表示平台跨学校可见（此时三个白名单均为 null，不参与过滤）
  */
 async function resolveScope(identity) {
   const { userId, role } = identity;
@@ -69,9 +69,19 @@ async function resolveScope(identity) {
     collegeIds: null
   };
 
-  // school_admin / super_admin / developer：全校范围，不加任何过滤
-  if (role === ROLES.SCHOOL_ADMIN || role === ROLES.SUPER_ADMIN || isDeveloper(identity.originalRole)) {
+  // 只有平台管理员拥有跨学校范围。
+  if (role === ROLES.SUPER_ADMIN || isDeveloper(identity.originalRole)) {
     return { ...base, isGlobal: true };
+  }
+
+  if (role === ROLES.SCHOOL_ADMIN) {
+    const schoolId = toId(identity.schoolId);
+    if (!schoolId) return { ...base, schoolId: null, collegeIds: [], classIds: [], studentIds: [] };
+    const colleges = await College.findAll({ where: { schoolId }, attributes: ['id'], raw: true });
+    const collegeIds = uniqIds(colleges.map(item => item.id));
+    const classes = collegeIds.length
+      ? await Class.findAll({ where: { collegeId: collegeIds }, attributes: ['id'], raw: true }) : [];
+    return { ...base, schoolId, collegeIds, classIds: uniqIds(classes.map(item => item.id)) };
   }
 
   if (role === ROLES.STUDENT) {
@@ -154,7 +164,8 @@ async function attachScope(req, res, next) {
     if (!req.userId) return next();
 
     const cached = scopeCache.get(req.userId);
-    if (cached && cached.expireAt > Date.now() && cached.scope.role === req.role) {
+    const identityKey = [req.role, req.user?.schoolId, req.user?.collegeId, req.user?.classId].join(':');
+    if (cached && cached.expireAt > Date.now() && cached.identityKey === identityKey) {
       req.scope = cached.scope;
       return next();
     }
@@ -163,11 +174,12 @@ async function attachScope(req, res, next) {
       userId: req.userId,
       role: req.role,
       originalRole: req.originalRole,
+      schoolId: req.user?.schoolId,
       classId: req.user?.classId,
       collegeId: req.user?.collegeId
     });
 
-    scopeCache.set(req.userId, { scope, expireAt: Date.now() + SCOPE_CACHE_TTL_MS });
+    scopeCache.set(req.userId, { scope, identityKey, expireAt: Date.now() + SCOPE_CACHE_TTL_MS });
     req.scope = scope;
     next();
   } catch (err) {

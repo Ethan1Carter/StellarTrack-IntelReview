@@ -29,3 +29,6 @@ Thumbs.db
 # Local tool bundles and historical snapshots
 tools/
 archive/
+
+# 文档生成脚本的中间产物（pass1.pdf、页数缓存、逐页位图与体检报告）
+tmp/

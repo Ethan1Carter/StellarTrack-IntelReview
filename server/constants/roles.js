@@ -43,7 +43,7 @@ const ROLE_LABELS = {
  *   COLLEGE_ABOVE —— 院系级及以上（辅导员仅管本班学生，不具院级管理权）
  *   SCHOOL_ABOVE  —— 学校级及以上
  *   ADMIN         —— 四级管理员全集（班级 / 辅导员 / 院系 / 学校）
- *   GLOBAL_SCOPE  —— 数据范围为"全校不过滤"的角色（scope 层五态矩阵的 isGlobal 依据）
+ *   GLOBAL_SCOPE  —— 数据范围为"平台跨学校"的角色（scope 层五态矩阵的 isGlobal 依据）
  */
 const ROLE_GROUPS = {
   STUDENT_LIKE: [ROLES.STUDENT, ROLES.CLASS_ADMIN],
@@ -51,7 +51,7 @@ const ROLE_GROUPS = {
   COLLEGE_ABOVE: [ROLES.COLLEGE_ADMIN, ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN],
   SCHOOL_ABOVE: [ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN],
   ADMIN: [ROLES.CLASS_ADMIN, ROLES.COUNSELOR, ROLES.COLLEGE_ADMIN, ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN],
-  GLOBAL_SCOPE: [ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN]
+  GLOBAL_SCOPE: [ROLES.SUPER_ADMIN]
 };
 
 /**

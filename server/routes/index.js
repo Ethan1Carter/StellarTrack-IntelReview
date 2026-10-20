@@ -15,6 +15,16 @@ router.use('/register', require('./register'));
 router.use(auth);
 // 鉴权之后解析数据作用域白名单（req.scope），供各路由的 narrow* / assert* 使用
 router.use(attachScope);
+const models = require('../models');
+const { installSchoolIsolation } = require('../middleware/schoolIsolation');
+const schoolIsolation = installSchoolIsolation({ ...models, BonusClaim: require('../models/BonusClaim') });
+router.use(schoolIsolation);
+router.use(require('../middleware/attachmentAccess').validateAttachmentReferences);
+router.use((req, res, next) => {
+  const header = req.headers.authorization || '';
+  require('../middleware/attachmentAccess').setMediaCookie(req, res, header.startsWith('Bearer ') ? header.slice(7) : header);
+  next();
+});
 
 router.use('/users', require('./users'));
 router.use('/schools', require('./schools'));
@@ -38,6 +48,7 @@ router.use('/recycles', require('./recycles')); // 数据可回收模块（回�
 router.use('/upload', require('./upload'));
 router.use('/profile', require('./profile'));
 router.use('/ai-materials', require('./ai-materials'));
+router.use('/growth-plans', require('./growth-plans'));
 router.use('/ai-analysis', require('./ai-analysis'));
 router.use('/bonus', require('./bonus')); // 学生加分申报（提交 + 班级管理员待办 + 实时推送）
 

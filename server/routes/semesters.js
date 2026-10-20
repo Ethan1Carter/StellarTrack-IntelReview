@@ -163,7 +163,8 @@ router.post('/', requireCollegeAbove, async (req, res, next) => {
       data.collegeId = my;
     } else {
       // 学校管理员：接受 collegeIds 数组；空数组/空=全校通用
-      const ids = normalizeCollegeIds(d.collegeIds);
+      const ids = normalizeCollegeIds(d.collegeIds) || (req.role === 'school_admin' ? req.scope?.collegeIds : null);
+      if (req.role === 'school_admin' && !ids?.length) throw new AppError('本校尚未配置院系', 400);
       data.collegeIds = ids; // ids=null → 全校
       data.collegeId = Array.isArray(ids) && ids.length ? ids[0] : null;
     }
@@ -193,7 +194,7 @@ router.put('/:id', requireCollegeAbove, async (req, res, next) => {
     } else {
       // 学校管理员允许改 collegeIds
       if (d.collegeIds !== undefined) {
-        const ids = normalizeCollegeIds(d.collegeIds);
+        const ids = normalizeCollegeIds(d.collegeIds) || (req.role === 'school_admin' ? req.scope?.collegeIds : null);
         upd.collegeIds = ids;
         upd.collegeId = Array.isArray(ids) && ids.length ? ids[0] : null;
       }

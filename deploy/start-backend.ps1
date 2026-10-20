@@ -1,9 +1,9 @@
-param(
+﻿param(
   [int]$Port = 3000
 )
 
 $ErrorActionPreference = 'Stop'
-$serverRoot = Split-Path -Parent $PSScriptRoot
+$serverRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'server'
 $envFile = Join-Path $serverRoot '.env'
 
 if (-not (Test-Path -LiteralPath $envFile)) {
@@ -13,6 +13,12 @@ if (-not (Test-Path -LiteralPath $envFile)) {
 }
 
 $env:PORT = $Port
-Set-Location $serverRoot
-npm ci
-npm run start
+Push-Location $serverRoot
+try {
+  npm ci
+  if ($LASTEXITCODE -ne 0) { throw '后端依赖安装失败，请检查网络和锁文件。' }
+  npm run start
+  if ($LASTEXITCODE -ne 0) { throw '后端服务启动失败，请检查上面的错误信息。' }
+} finally {
+  Pop-Location
+}

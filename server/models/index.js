@@ -591,7 +591,11 @@ College.hasOne(EvaluationConfig, { foreignKey: 'collegeId' });
 // =====================================================================
 // 三、集中导出
 // =====================================================================
+const GrowthPlan = require('./GrowthPlan')(sequelize, DataTypes);
+GrowthPlan.belongsTo(User, { foreignKey: 'studentId', as: 'student' });
+
 module.exports = {
+  GrowthPlan,
   sequelize,
   School,
   College,

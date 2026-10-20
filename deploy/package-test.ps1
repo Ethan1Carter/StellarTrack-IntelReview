@@ -1,42 +1,59 @@
 ﻿param(
-  [string]$OutputPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'output\星轨智评测试部署包.zip')
+  [string]$OutputPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'output\星轨智评测试部署包.zip'),
+  [switch]$ListOnly
 )
 
 $ErrorActionPreference = 'Stop'
-$projectRoot = Split-Path -Parent $PSScriptRoot
-$stagingRoot = Join-Path $env:TEMP 'xinggui-test-deploy'
-$packageRoot = Join-Path $stagingRoot '星轨智评测试部署包'
+$projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$excludedDirectories = @('node_modules', '.git', '.agents', '.codex', '.trae', '.workbuddy', '.aws', '.ssh', 'data',
+  'logs', 'backups', 'uploads', 'dist', 'tools', 'output', 'tmp', 'archive', 'qa-verify', 'dist_qa_verify')
 
-Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
-
-$excludedDirectories = @('node_modules', '.git', '.trae', '.workbuddy', '.env', 'logs', 'backups', 'uploads', 'dist', 'tools', 'output', 'archive', 'qa-verify', 'dist_qa_verify')
-$excludedFileNames = @('.env')
-
-Get-ChildItem -LiteralPath $projectRoot -Recurse -Force -File | ForEach-Object {
-  $relativePath = $_.FullName.Substring($projectRoot.Length).TrimStart('\')
-  $pathParts = $relativePath -split '[\\/]'
-  $directoryParts = if ($pathParts.Length -gt 1) { $pathParts[0..($pathParts.Length - 2)] } else { @() }
-  $containsExcludedDirectory = $directoryParts | Where-Object { $excludedDirectories -contains $_ }
-
-  if ($containsExcludedDirectory -or $excludedFileNames -contains $_.Name -or $_.Extension -eq '.log') {
-    return
+function Get-PackageFiles([string]$Directory) {
+  foreach ($item in Get-ChildItem -LiteralPath $Directory -Force) {
+    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+    if ($item.PSIsContainer) {
+      if ($item.Name -notin $excludedDirectories) { Get-PackageFiles $item.FullName }
+      continue
+    }
+    if ($item.Name -like '.env*' -and $item.Name -ne '.env.example') { continue }
+    if ($item.Name -in @('.npmrc', '.pypirc', '.git-credentials', 'id_rsa', 'id_ed25519')) { continue }
+    if ($item.Extension -in @('.log', '.zip', '.sql', '.dump', '.backup', '.pem', '.key', '.pfx')) {
+      if ($item.Extension -ne '.sql' -or -not $item.FullName.StartsWith((Join-Path $projectRoot 'server\scripts') + '\', [StringComparison]::OrdinalIgnoreCase)) { continue }
+    }
+    if ($item.FullName -eq [IO.Path]::GetFullPath($OutputPath)) { continue }
+    $item
   }
-
-  $destinationPath = Join-Path $packageRoot $relativePath
-  New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
-  Copy-Item -LiteralPath $_.FullName -Destination $destinationPath -Force
 }
 
-$serverEnv = Join-Path -Path (Join-Path -Path $packageRoot -ChildPath 'server') -ChildPath '.env'
-if (Test-Path -LiteralPath $serverEnv) {
-  Remove-Item -LiteralPath $serverEnv -Force
+$files = @(Get-PackageFiles $projectRoot)
+if ($ListOnly) {
+  $files | ForEach-Object { $_.FullName.Substring($projectRoot.Length + 1) }
+  exit 0
 }
 
-New-Item -ItemType Directory -Path (Split-Path -Parent $OutputPath) -Force | Out-Null
-if (Test-Path -LiteralPath $OutputPath) {
-  Remove-Item -LiteralPath $OutputPath -Force
+$tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+$stagingRoot = Join-Path $tempRoot ('xinggui-deploy-' + [Guid]::NewGuid().ToString('N'))
+$packageRoot = Join-Path $stagingRoot '星轨智评测试部署包'
+try {
+  New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+  foreach ($file in $files) {
+    $relativePath = $file.FullName.Substring($projectRoot.Length + 1)
+    $destination = Join-Path $packageRoot $relativePath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    Copy-Item -LiteralPath $file.FullName -Destination $destination
+  }
+  Set-Content -LiteralPath (Join-Path $packageRoot '.env.production') -Value 'VITE_API_BASE=/api' -Encoding utf8
+  $outputFile = [IO.Path]::GetFullPath($OutputPath)
+  New-Item -ItemType Directory -Path (Split-Path -Parent $outputFile) -Force | Out-Null
+  if (Test-Path -LiteralPath $outputFile) { throw '输出文件已存在，请指定新名称，避免覆盖已有部署包。' }
+  Compress-Archive -LiteralPath $packageRoot -DestinationPath $outputFile
+  Write-Host "测试部署包已生成：$outputFile"
+} finally {
+  $resolvedStaging = [IO.Path]::GetFullPath($stagingRoot)
+  $expectedParent = [IO.Path]::GetFullPath((Split-Path -Parent $resolvedStaging))
+  if ($expectedParent.TrimEnd('\') -eq $tempRoot.TrimEnd('\') -and
+      (Split-Path -Leaf $resolvedStaging) -match '^xinggui-deploy-[a-f0-9]{32}$' -and
+      (Test-Path -LiteralPath $resolvedStaging)) {
+    Remove-Item -LiteralPath $resolvedStaging -Recurse -Force
+  }
 }
-Compress-Archive -LiteralPath $packageRoot -DestinationPath $OutputPath
-Remove-Item -LiteralPath $stagingRoot -Recurse -Force
-Write-Host "测试部署包已生成：$OutputPath"

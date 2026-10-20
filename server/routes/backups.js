@@ -4,13 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
-const { exec } = require('child_process');
+const { runDatabaseCommand, databaseCommand } = require('../utils/databaseBackup');
 const dayjs = require('dayjs');
 const config = require('../config');
 const { Backup } = require('../models');
 const { AppError } = require('../middleware/errorHandler');
 const { parsePagination, formatBytes, getClientIp } = require('../utils');
-const { requireSchoolAdmin, auth } = require('../middleware/auth');
+const { requireSuperAdmin, auth } = require('../middleware/auth');
 
 router.use(auth);
 
@@ -49,13 +49,15 @@ const backupUpload = multer({
 
 // 辅助：按 fileName 或 id 查找备份
 async function findBackupByIdOrFilename(idOrFile) {
-  let b = await Backup.findByPk(idOrFile);
-  if (b) return b;
-  return await Backup.findOne({ where: { fileName: decodeURIComponent(idOrFile) } });
+  if (/^[1-9]\d*$/.test(String(idOrFile))) {
+    const byId = await Backup.findByPk(idOrFile);
+    if (byId) return byId;
+  }
+  return Backup.findOne({ where: { fileName: String(idOrFile) } });
 }
 
 // GET 列表
-router.get('/', requireSchoolAdmin, async (req, res, next) => {
+router.get('/', requireSuperAdmin, async (req, res, next) => {
   try {
     const { page, pageSize, offset, limit } = parsePagination(req.query);
     const { count, rows } = await Backup.findAndCountAll({
@@ -65,40 +67,13 @@ router.get('/', requireSchoolAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-function runDump(filePath) {
-  return new Promise((resolve, reject) => {
-    const dialect = (process.env.DB_DIALECT || config.db.dialect || 'postgres').toLowerCase();
-    const { host, port, user, password, name } = config.db;
-
-    let cmd;
-    if (dialect === 'mysql') {
-      cmd = `mysqldump -h${host} -P${port} -u${user} -p${password} --default-character-set=utf8mb4 ${name} > "${filePath}"`;
-    } else {
-      // PostgreSQL / PolarDB for PostgreSQL —— 使用 PGPASSWORD 环境变量避免明文传参
-      const pgPassword = password || '';
-      const escapedPath = filePath.replace(/"/g, '\\"');
-      if (process.platform === 'win32') {
-        cmd = `cmd /c "set PGPASSWORD=${pgPassword}&& pg_dump -h ${host} -p ${port} -U ${user} -d ${name} -F p -b -v --inserts > \"${escapedPath}\""`;
-      } else {
-        cmd = `PGPASSWORD='${pgPassword.replace(/'/g, "'\\''")}' pg_dump -h ${host} -p ${port} -U ${user} -d ${name} -F p -b -v --inserts > "${filePath}"`;
-      }
-    }
-
-    const shellCmd = process.platform === 'win32'
-      ? cmd
-      : dialect === 'mysql' ? cmd.replace(/-p[^\s]+/, `-p'${password}'`) : cmd;
-
-    exec(shellCmd, { timeout: 300000, maxBuffer: 1024 * 1024 * 50 }, (err) => {
-      if (err) reject(err);
-      else resolve(true);
-    });
-  });
-}
+const runDump = filePath => runDatabaseCommand(config, filePath);
+let restoreRunning = false;
 
 // POST 创建备份
-router.post('/', requireSchoolAdmin, async (req, res, next) => {
+router.post('/', requireSuperAdmin, async (req, res, next) => {
   try {
-    const fileName = `backup_${dayjs().format('YYYYMMDD_HHmmss')}_${process.pid}.sql`;
+    const fileName = `backup_${dayjs().format('YYYYMMDD_HHmmss')}_${crypto.randomBytes(6).toString('hex')}.sql`;
     const filePath = path.join(BACKUP_DIR, fileName);
 
     let status = 'success', errorMsg = null;
@@ -131,7 +106,7 @@ router.post('/', requireSchoolAdmin, async (req, res, next) => {
 });
 
 // POST /upload - 上传备份文件（前端 uploadBackup，必须在 /:id 之前）
-router.post('/upload', requireSchoolAdmin, backupUpload.single('file'), async (req, res, next) => {
+router.post('/upload', requireSuperAdmin, backupUpload.single('file'), async (req, res, next) => {
   let saved = false;
   try {
     if (!req.file) throw new AppError('请上传文件', 400);
@@ -161,7 +136,7 @@ router.post('/upload', requireSchoolAdmin, backupUpload.single('file'), async (r
 });
 
 // GET 备份统计信息（仅学校管理员）—— 必须在 /:id/* 之前
-router.get('/stats', requireSchoolAdmin, async (req, res, next) => {
+router.get('/stats', requireSuperAdmin, async (req, res, next) => {
   try {
     const total = await Backup.count();
     const success = await Backup.count({ where: { status: 'success' } });
@@ -189,7 +164,7 @@ router.get('/stats', requireSchoolAdmin, async (req, res, next) => {
 });
 
 // GET /:id/download 下载（兼容 id 和 fileName 查找）
-router.get('/:id/download', requireSchoolAdmin, async (req, res, next) => {
+router.get('/:id/download', requireSuperAdmin, async (req, res, next) => {
   try {
     const b = await findBackupByIdOrFilename(req.params.id);
     if (!b) throw new AppError('文件不存在', 404);
@@ -200,46 +175,55 @@ router.get('/:id/download', requireSchoolAdmin, async (req, res, next) => {
 });
 
 // POST /:filename/restore - 还原备份（对应前端 restoreBackup）
-router.post('/:filename/restore', requireSchoolAdmin, async (req, res, next) => {
+router.post('/:filename/restore', requireSuperAdmin, async (req, res, next) => {
+  if (restoreRunning) return next(new AppError('已有还原任务进行中，请等待完成', 409));
+  restoreRunning = true;
+  let dispatched = false;
   try {
     const b = await findBackupByIdOrFilename(req.params.filename);
-    if (!b) throw new AppError('文件不存在', 404);
+    if (!b || b.status !== 'success') throw new AppError('请选择成功的备份文件', 400);
     const filePath = resolveBackupPath(b.filePath);
     if (!fs.existsSync(filePath)) throw new AppError('文件不存在', 404);
-
-    const restoreTask = await Backup.create({
-      fileName: `RESTORE_${b.fileName}_${dayjs().format('YYYYMMDD_HHmmss')}`,
-      filePath,
-      type: 'restore',
-      status: 'running',
-      createdBy: req.userId,
-      remark: `还原备份：${b.fileName}`
-    });
-
-    const { name, user, password, host, port } = config.db;
-    const ext = path.extname(filePath);
-    let cmd;
-    if (ext === '.sql') {
-      cmd = `"${config.backup.psqlPath || 'psql'}" -U ${user} -d ${name} -h ${host} -p ${port} -f "${filePath}"`;
-    } else {
-      cmd = `"${config.backup.pgRestorePath || 'pg_restore'}" -U ${user} -d ${name} -h ${host} -p ${port} --clean --if-exists "${filePath}"`;
-    }
-    const env = { ...process.env, PGPASSWORD: password };
-    exec(cmd, { env, timeout: 10 * 60 * 1000 }, async (err, stdout, stderr) => {
-      if (err) {
-        await restoreTask.update({ status: 'failed', remark: `还原失败：${err.message} ${stderr}` });
-      } else {
-        await restoreTask.update({ status: 'success', remark: '还原完成' });
+    databaseCommand(config, filePath, true);
+    // 恢复前先留下当前数据库的可恢复副本；备份失败则拒绝恢复。
+    const safetyName = `before_restore_${dayjs().format('YYYYMMDD_HHmmss')}_${Date.now()}.sql`;
+    const safetyPath = path.join(BACKUP_DIR, safetyName);
+    await runDump(safetyPath);
+    const safetySize = fs.statSync(safetyPath).size;
+    const safetyData = { fileName: safetyName, filePath: safetyPath, fileSize: safetySize,
+      fileSizeText: formatBytes(safetySize), type: 'manual', status: 'success', createdBy: req.userId, remark: '还原前自动安全备份' };
+    await Backup.create(safetyData);
+    const taskData = {
+      fileName: `RESTORE_${b.fileName}_${Date.now()}`, filePath, type: 'restore',
+      status: 'running', createdBy: req.userId, remark: `还原备份：${b.fileName}`
+    };
+    const task = await Backup.create(taskData);
+    const sourceData = b.toJSON();
+    delete sourceData.id; delete sourceData.createdAt; delete sourceData.updatedAt;
+    const recordResult = async (status, remark) => {
+      // 恢复会替换 backups 表；按文件名重建本次源文件、安全备份及任务记录。
+      for (const data of [sourceData, safetyData, { ...taskData, status, remark }]) {
+        const row = await Backup.findOne({ where: { fileName: data.fileName } });
+        if (row) await row.update(data);
+        else await Backup.create(data);
       }
-    });
-
-    res.success(restoreTask, '还原任务已开始，请稍候...');
-  } catch (err) { next(err); }
+    };
+    dispatched = true;
+    runDatabaseCommand(config, filePath, true)
+      .then(() => recordResult('success', '还原完成'))
+      .catch(async error => {
+        try { await recordResult('failed', `还原失败：${error.message}`); }
+        catch (updateError) { console.error('[restore status]', updateError.message); }
+      })
+      .finally(() => { restoreRunning = false; });
+    res.success(task, '还原任务已开始，请稍候...');
+  } catch (error) { next(error); }
+  finally { if (!dispatched) restoreRunning = false; }
 });
 
 // GET /:filename - 直接按文件名下载备份（对应前端 downloadBackup）
 // 必须在所有 2 段路径之后注册（如 /:id/download, /:filename/restore）
-router.get('/:filename', requireSchoolAdmin, async (req, res, next) => {
+router.get('/:filename', requireSuperAdmin, async (req, res, next) => {
   try {
     const b = await findBackupByIdOrFilename(req.params.filename);
     if (!b) throw new AppError('文件不存在', 404);
@@ -250,12 +234,16 @@ router.get('/:filename', requireSchoolAdmin, async (req, res, next) => {
 });
 
 // DELETE /:id（兼容 id 和 fileName 查找）
-router.delete('/:id', requireSchoolAdmin, async (req, res, next) => {
+router.delete('/:id', requireSuperAdmin, async (req, res, next) => {
   try {
+    if (restoreRunning) throw new AppError('还原期间不能删除备份文件', 409);
     const b = await findBackupByIdOrFilename(req.params.id);
     if (!b) throw new AppError('备份不存在', 404);
     const filePath = resolveBackupPath(b.filePath);
-    try { fs.unlinkSync(filePath); } catch (_) { }
+    const references = await Backup.count({ where: { filePath } });
+    if (references <= 1) {
+      try { fs.unlinkSync(filePath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
     await b.destroy();
     res.success(null, '备份已删除');
   } catch (err) { next(err); }

@@ -4,6 +4,10 @@ const path = require('path');
 const { BonusModule } = require('../models');
 const { UPLOAD_ROOT } = require('../middleware/upload');
 const { reviewMaterial } = require('../services/aiProvider');
+const { uploadOwner } = require('../utils/uploadPath');
+const { signMaterialReview } = require('../utils/materialReviewReceipt');
+const config = require('../config');
+const { moduleEligible } = require('../utils/materialRules');
 
 const router = express.Router();
 
@@ -23,8 +27,7 @@ function resolveUploadPath(fileUrl) {
 }
 
 function isOwnedByUser(filePath, userId) {
-  const folder = path.basename(path.dirname(filePath));
-  return folder.endsWith(`_${userId}`);
+  return uploadOwner(path.relative(UPLOAD_ROOT, filePath)) === Number(userId);
 }
 
 router.post('/review', async (req, res, next) => {
@@ -33,30 +36,37 @@ router.post('/review', async (req, res, next) => {
     if (!fileUrl) return res.fail('请先上传证明材料', 400);
     const filePath = resolveUploadPath(fileUrl);
     await fs.access(filePath);
-    if (!isOwnedByUser(filePath, req.userId) && req.role !== 'super_admin') {
+    const relative = path.relative(UPLOAD_ROOT, filePath).replace(/\\/g, '/');
+    const ownFile = /^\d{8}_u/.test(relative) && isOwnedByUser(filePath, req.userId);
+    if (!ownFile && req.role !== 'super_admin') {
       return res.forbidden('只能分析本人上传的证明材料');
     }
 
     const modules = await BonusModule.findAll({
       where: { status: 'active' },
-      attributes: ['id', 'name', 'category', 'singleMaxScore', 'yearlyMaxScore'],
+      attributes: ['id', 'name', 'category', 'singleMaxScore', 'yearlyMaxScore', 'ruleDescription', 'updatedAt',
+        'collegeId', 'applyScope', 'applyGrades', 'applyMajors', 'applyClassIds'],
       order: [['id', 'ASC']]
     });
-    const mimeType = String(req.body.mimeType || '').toLowerCase()
-      || (path.extname(filePath).toLowerCase() === '.pdf' ? 'application/pdf' : 'image/jpeg');
+    // 不信任客户端传入的 MIME；PDF 不能被伪装为图片后标记为已读取正文。
+    const mimeType = ({ '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp' })[path.extname(filePath).toLowerCase()];
+    if (!mimeType) return res.fail('不支持分析该附件格式', 400);
     const result = await reviewMaterial({
       fileName: fileName || path.basename(filePath),
       title,
       description,
       moduleId,
-      modules: modules.map(module => module.toJSON())
+      applicant: { realName: req.user.realName, studentNo: req.user.studentNo },
+      modules: modules.map(module => module.toJSON()).filter(module => moduleEligible(module, req.user))
     }, filePath, mimeType);
 
-    res.success({
+    const review = {
       ...result,
       fileUrl,
       reviewedAt: new Date().toISOString()
-    }, '材料分析完成');
+    };
+    res.success({ ...review, reviewToken: signMaterialReview(review, req.user, config.jwt.secret) }, '材料分析完成');
   } catch (error) {
     next(error);
   }

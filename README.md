@@ -1,3 +1,5 @@
+<p align="left"><img src="public/branding/xinggui-logo.png" alt="星轨智评 XINGGUI" width="180"></p>
+
 # StellarTrack-IntelReview
 
 星轨智评（XINGGUI）高校五育综合评价平台，包含 Vue 3 前端和 Express + Sequelize 后端服务。
@@ -62,8 +64,10 @@ npm start
 已有数据库升级：`psql -h 127.0.0.1 -U postgres -d <库名> -f server/scripts/migrate-add-schools.sql`
 （可重复执行：建表用 IF NOT EXISTS，只回填 `school_id IS NULL` 的历史数据，不覆盖已有归属）。
 
-> 注意：数据范围层（`middleware/scope.js`）目前仍把 `school_admin` 视为"全校不过滤"，
-> 即多学校场景下学校管理员可以看到其他学校的业务数据。若要多校严格隔离，需要再改 scope 层。
+学校管理员按本人 `school_id` 限制到本校院系、班级和用户；未绑定学校时拒绝访问业务数据。
+查询、计数、聚合和写操作还通过请求内的学校边界做统一约束，防止旧接口遗漏筛选条件。
+平台通用模块、默认公式和学期可读，由超级管理员维护；学校管理员创建学期时，默认面向本校院系。
+数据库备份和恢复属于平台操作，仅超级管理员 / 开发者可用。
 
 ### 辅导员维护"我带的班级"
 
@@ -84,3 +88,28 @@ cd server
 node scripts/_test-register-flow.js         # 注册全链路 43 项
 node scripts/_test-school-register-flow.js  # 学校绑定与分校审批 28 项
 ```
+
+## 日常检查与本轮完善
+
+在项目根目录运行 `npm test`，执行前端行为、后端权限、上传、Excel 导入和部署清单回归；
+这些新测试使用模拟数据，不连接日常数据库。`npm run build` 检查前端生产构建。
+
+附件需要登录后访问，浏览器通过仅限 `/uploads` 的 HttpOnly Cookie 预览图片及 PDF。
+部署时应将 `/api` 和 `/uploads` 代理到同一后端，不能额外公开映射上传目录。
+新附件目录由鉴权用户决定；旧材料按已有申报、申诉或公告关联核验，无法证明归属时需重新上传。
+
+测试部署包仅保留环境变量示例，并生成同源 `/api` 的前端配置。可先运行
+`powershell -File deploy/package-test.ps1 -ListOnly` 查看文件清单。
+
+详细改动、部署条件和待完善范围见 [本轮完善与验证说明](docs/完善与验证说明.md)。
+
+## 参赛版本：材料证据与成长行动
+
+材料审核支持图片及 PDF 逐页识别、获奖人身份核对、附件页码和评分规则原文引用。
+成长行动计划在 `/growth-plan` 提供学生记录、教师反馈及过程历史，建议来源明确标注为规则辅助。
+
+升级已有数据库时，在 `server` 目录执行 `npm run migrate:growth-plans`，只创建成长计划新表，不改变原有业务表。
+PDF 识别需安装 Poppler 的 `pdfinfo` 和 `pdftoppm`，可用 `npm run check:ai-runtime` 检查；绝对路径配置见 `server/.env.example`。
+升级后重启后端并刷新前端。真实 PostgreSQL 的随机隔离 schema 验证可运行 `npm run test:growth-db`，不会修改现有师生和评价数据。
+
+完整能力边界、验证结果和比赛演示顺序见 [参赛版本更新说明](docs/参赛版本更新说明.md)。

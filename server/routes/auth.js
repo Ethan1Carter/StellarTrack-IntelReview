@@ -8,6 +8,7 @@ const { AppError } = require('../middleware/errorHandler');
 const { generateToken, comparePassword, getClientIp } = require('../utils');
 const { writeOperateLog } = require('../middleware/logger');
 const { auth } = require('../middleware/auth');
+const { setMediaCookie, clearMediaCookie } = require('../middleware/attachmentAccess');
 
 /**
  * POST /api/auth/login
@@ -69,6 +70,7 @@ router.post('/login', async (req, res, next) => {
     await user.save({ silent: true });
 
     const token = generateToken(user);
+    setMediaCookie(req, res, token);
 
     // 状态值兼容（返回数值供前端）
     const statusVal = (user.status === 'active' || user.status === 1 || user.status === '1' || user.status === true) ? 1 : 0;
@@ -129,7 +131,10 @@ router.post('/login', async (req, res, next) => {
  */
 router.get('/me', auth, async (req, res, next) => {
   try {
+    const header = req.headers.authorization || '';
+    setMediaCookie(req, res, header.startsWith('Bearer ') ? header.slice(7) : header);
     const user = await User.findByPk(req.userId, {
+      attributes: { exclude: ['password', 'idCard', 'lastLoginIp'] },
       include: [
         { association: 'school', attributes: ['id', 'name'] },
         { association: 'college', attributes: ['id', 'name'] },
@@ -154,6 +159,7 @@ router.get('/me', auth, async (req, res, next) => {
  */
 router.post('/logout', auth, async (req, res, next) => {
   try {
+    clearMediaCookie(req, res);
     await writeOperateLog({
       userId: req.userId,
       username: req.username,

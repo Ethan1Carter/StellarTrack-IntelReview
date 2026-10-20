@@ -55,6 +55,10 @@ const routes = [
         component: () => import('@/views/ai/MaterialReview.vue'),
         meta: { title: 'AI 材料审核', icon: 'MagicStick', roles: ALL_AUTHENTICATED }
       },
+      {
+        path: 'growth-plan', name: 'GrowthPlan', component: () => import('@/views/ai/GrowthPlan.vue'),
+        meta: { title: '成长行动计划', icon: 'TrendCharts', roles: ALL_AUTHENTICATED }
+      },
 
       // ========== 申报相关 ==========
       {
@@ -228,7 +232,7 @@ const routes = [
         path: 'backups',
         name: 'Backups',
         component: () => import('@/views/manage/Backups.vue'),
-        meta: { title: '数据备份', icon: 'FolderOpened', roles: ROLE_GROUPS.SCHOOL_ABOVE }
+        meta: { title: '数据备份', icon: 'FolderOpened', roles: [ROLES.SUPER_ADMIN] }
       },
 
       // ========== 个人中心 ==========

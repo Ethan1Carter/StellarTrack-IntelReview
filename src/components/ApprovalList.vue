@@ -237,6 +237,14 @@
             </div>
 
             <!-- 证明材料（附件预览）直接展示，无需再点进 ApplyDetailDialog -->
+            <AIReviewEvidence :review="current.extraData?.aiReview" />
+            <p v-if="current.extraData?.aiConfirmation?.reason">申报人核对说明：{{ current.extraData.aiConfirmation.reason }}</p>
+            <el-alert v-if="current.extraData?.aiReview" class="mt-16" type="warning" show-icon :closable="false"
+              title="AI 证书归属辅助核对，请审核原件"
+              :description="current.extraData.aiReview.ownership?.message || '该历史 AI 结果尚未核验归属。'" />
+            <p v-if="current.extraData?.aiReview?.ownership" class="mt-8">
+              材料识别获奖人：{{ current.extraData.aiReview.ownership.recognizedRecipients?.map(person => person.name).join('、') || '未读取到' }}
+            </p>
             <div class="mt-16">
               <div class="panel-title" style="border-left-color:#67C23A;">证明材料（{{ proofFiles.length }}）</div>
               <el-empty v-if="!proofFiles.length" description="暂无附件" :image-size="50" />
@@ -455,6 +463,7 @@
 </template>
 
 <script setup>
+import AIReviewEvidence from '@/components/AIReviewEvidence.vue';
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue';
 import dayjs from 'dayjs';
 import StatusTag from './StatusTag.vue';

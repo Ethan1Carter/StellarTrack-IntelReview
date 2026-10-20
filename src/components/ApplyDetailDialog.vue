@@ -45,6 +45,15 @@
           <div class="desc-block">{{ safeStr(app.description, '(未填写)') }}</div>
         </el-descriptions-item>
       </el-descriptions>
+      <el-alert v-if="app.extraData?.aiReview" type="warning" :closable="false" show-icon style="margin-top:12px;"
+        title="AI 证书归属辅助核对，不能替代原件审核"
+        :description="app.extraData.aiReview.ownership?.message || '此历史 AI 结果未进行归属核验，请人工核对。'" />
+      <AIReviewEvidence :review="app.extraData?.aiReview" />
+      <p v-if="app.extraData?.aiConfirmation?.reason">申报人核对说明：{{ app.extraData.aiConfirmation.reason }}</p>
+      <el-descriptions v-if="app.extraData?.aiReview?.ownership" :column="1" border size="small" style="margin-top:8px;">
+        <el-descriptions-item label="材料识别的获奖人">{{ app.extraData.aiReview.ownership.recognizedRecipients?.map(person => person.name).join('、') || '未读取到' }}</el-descriptions-item>
+        <el-descriptions-item label="身份信息核对">{{ ({ matched: '信息一致，仍需人工复核', mismatch: '归属不符', unverified: '无法核验' })[app.extraData.aiReview.ownership.status] || '尚未核验' }}</el-descriptions-item>
+      </el-descriptions>
 
       <!-- 驳回理由高亮 -->
       <div v-if="['rejected','returned'].includes(app.status) || app.rejectReason" class="reject-banner">
@@ -191,6 +200,7 @@
 </template>
 
 <script setup>
+import AIReviewEvidence from '@/components/AIReviewEvidence.vue';
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import dayjs from 'dayjs';

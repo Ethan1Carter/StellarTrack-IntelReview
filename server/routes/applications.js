@@ -14,6 +14,7 @@ const { Op } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
+const { canonicalAiExtraData } = require('../utils/materialReviewReceipt');
 
 router.use(auth);
 
@@ -710,7 +711,7 @@ router.post('/', requireStudent, upload.array('photos', 10), compressImages, asy
       otherDescription: otherDescription || null,
       score: Number(realApplyScore || 0),
       attachPhotos: photos.length > 0 ? photos : null,
-      extraData: extraData ? (typeof extraData === 'string' ? JSON.parse(extraData) : extraData) : null,
+      extraData: canonicalAiExtraData(extraData, student, photos, config.jwt.secret, { ...req.body, score: realApplyScore, moduleId: realModuleId }),
       status: isDraft ? 'draft' : (startApproving ? 'approving' : 'approved'),
       currentLevel: isDraft ? 0 : (startApproving ? 1 : 0),
       totalLevels,
@@ -2224,6 +2225,8 @@ router.put('/:id', requireStudent, upload.array('photos', 10), compressImages, a
     } else if (directPhotos.length > 0 || uploadedPhotos.length > 0) {
       app.attachPhotos = [...(app.attachPhotos || []), ...directPhotos, ...uploadedPhotos];
     }
+    app.extraData = canonicalAiExtraData(req.body.extraData === undefined ? app.extraData : req.body.extraData,
+      req.user, app.attachPhotos || [], config.jwt.secret, { ...app.toJSON(), ...req.body, level: app.awardLevel });
 
     // 显式「提交申报」标志：将草稿/驳回/退回单据提交进入审批流程（不调用 /resubmit 也能完成提交）
     const wantSubmit = submit === true || submit === 'true' || saveDraft === false;
@@ -2388,6 +2391,9 @@ router.post('/:id/resubmit', requireStudent, upload.array('photos', 10), compres
     if (directPhotos.length > 0 || uploadedPhotos.length > 0) {
       app.attachPhotos = [...(app.attachPhotos || []), ...directPhotos, ...uploadedPhotos];
     }
+
+    app.extraData = canonicalAiExtraData(req.body.extraData === undefined ? app.extraData : req.body.extraData,
+      req.user, app.attachPhotos || [], config.jwt.secret, { ...app.toJSON(), ...req.body, level: app.awardLevel, status: 'approving' });
 
     // 一级审批人固定为班级管理员
     const cls = await Class.findByPk(student.classId);

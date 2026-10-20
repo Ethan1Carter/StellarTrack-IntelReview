@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="40" y1="24" x2="472" y2="488" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1B2772"/>
+      <stop offset="0.55" stop-color="#111845"/>
+      <stop offset="1" stop-color="#070A1E"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.55">
+      <stop offset="0" stop-color="#4DE1FF" stop-opacity="0.34"/>
+      <stop offset="0.55" stop-color="#4DE1FF" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#4DE1FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="88" y1="166" x2="424" y2="346" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5BE3FF"/>
+      <stop offset="0.5" stop-color="#9C8CFF"/>
+      <stop offset="1" stop-color="#FF7BD5"/>
+    </linearGradient>
+    <linearGradient id="star" x1="206" y1="206" x2="312" y2="312" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#B8ECFF"/>
+    </linearGradient>
+    <filter id="halo" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <filter id="dotglow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <clipPath id="card">
+      <rect x="16" y="16" width="480" height="480" rx="112"/>
+    </clipPath>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+
+  <g clip-path="url(#card)">
+    <circle cx="256" cy="228" r="236" fill="url(#glow)"/>
+    <g fill="#FFFFFF">
+      <circle cx="92" cy="96" r="2.4" opacity="0.55"/>
+      <circle cx="432" cy="128" r="1.8" opacity="0.4"/>
+      <circle cx="418" cy="392" r="2.2" opacity="0.45"/>
+      <circle cx="120" cy="404" r="1.7" opacity="0.35"/>
+      <circle cx="256" cy="70" r="1.5" opacity="0.3"/>
+      <circle cx="330" cy="452" r="1.9" opacity="0.28"/>
+      <circle cx="70" cy="286" r="1.6" opacity="0.26"/>
+      <circle cx="456" cy="268" r="1.4" opacity="0.25"/>
+    </g>
+
+    <!-- 外层星轨 -->
+    <g transform="rotate(32 256 256)">
+      <ellipse cx="256" cy="256" rx="152" ry="74" stroke="#7FD8FF" stroke-opacity="0.2" stroke-width="2"/>
+    </g>
+    <g transform="rotate(-26 256 256)">
+      <ellipse cx="256" cy="256" rx="170" ry="88" stroke="url(#ring)" stroke-opacity="0.72" stroke-width="2.6"/>
+
+      <!-- 五育星点：德 智 体 美 劳 -->
+      <g>
+        <circle cx="256" cy="168" r="21" fill="#FF5B6E" opacity="0.28" filter="url(#dotglow)"/>
+        <circle cx="256" cy="168" r="12.5" fill="#FF5B6E"/>
+        <circle cx="256" cy="168" r="4.6" fill="#FFFFFF" opacity="0.92"/>
+      </g>
+      <g>
+        <circle cx="417.7" cy="228.8" r="21" fill="#35C2FF" opacity="0.28" filter="url(#dotglow)"/>
+        <circle cx="417.7" cy="228.8" r="12.5" fill="#35C2FF"/>
+        <circle cx="417.7" cy="228.8" r="4.6" fill="#FFFFFF" opacity="0.92"/>
+      </g>
+      <g>
+        <circle cx="355.9" cy="327.2" r="21" fill="#3EDC9B" opacity="0.28" filter="url(#dotglow)"/>
+        <circle cx="355.9" cy="327.2" r="12.5" fill="#3EDC9B"/>
+        <circle cx="355.9" cy="327.2" r="4.6" fill="#FFFFFF" opacity="0.92"/>
+      </g>
+      <g>
+        <circle cx="156.1" cy="327.2" r="21" fill="#B27BFF" opacity="0.28" filter="url(#dotglow)"/>
+        <circle cx="156.1" cy="327.2" r="12.5" fill="#B27BFF"/>
+        <circle cx="156.1" cy="327.2" r="4.6" fill="#FFFFFF" opacity="0.92"/>
+      </g>
+      <g>
+        <circle cx="94.3" cy="228.8" r="21" fill="#FFB020" opacity="0.28" filter="url(#dotglow)"/>
+        <circle cx="94.3" cy="228.8" r="12.5" fill="#FFB020"/>
+        <circle cx="94.3" cy="228.8" r="4.6" fill="#FFFFFF" opacity="0.92"/>
+      </g>
+    </g>
+
+    <!-- 中心主星 -->
+    <circle cx="256" cy="256" r="66" fill="#6FE4FF" opacity="0.22" filter="url(#halo)"/>
+    <path d="M256 190 C264.5 233.5 278.5 247.5 322 256 C278.5 264.5 264.5 278.5 256 322 C247.5 278.5 233.5 264.5 190 256 C233.5 247.5 247.5 233.5 256 190 Z" fill="url(#star)"/>
+  </g>
+
+  <rect x="17" y="17" width="478" height="478" rx="111" stroke="url(#ring)" stroke-opacity="0.3" stroke-width="2"/>
+</svg>

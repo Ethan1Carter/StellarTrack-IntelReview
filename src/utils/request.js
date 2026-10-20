@@ -62,7 +62,7 @@ service.interceptors.response.use((res) => {
       ElMessageBox.confirm('登录状态已失效，请重新登录', '提示', { confirmButtonText: '重新登录', cancelButtonText: '取消', type: 'warning' })
         .then(() => { userStore.logout(); router.push('/login'); })
         .catch(() => {});
-      return Promise.reject(new Error(raw.message || '未登录'));
+      return Promise.reject(Object.assign(new Error(raw.message || '未登录'), { code: 401 }));
     }
     // 403 无权限 - 不自动跳转，让页面自己处理
     if (raw.code === 403 || raw.status === 403) {
@@ -79,7 +79,7 @@ service.interceptors.response.use((res) => {
   if (err.response) {
     if (err.response.status === 401) {
       const userStore = useUserStore();
-      userStore.logout();
+      userStore.logout({ notifyServer: false });
       router.push('/login');
       msg = '登录状态已失效';
     } else if (err.response.status === 403) {

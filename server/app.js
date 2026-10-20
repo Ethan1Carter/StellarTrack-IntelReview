@@ -42,7 +42,8 @@ app.use(responseEnhancer);
 app.use(requestLogger);
 
 // 静态文件：上传的图片
-app.use('/uploads', express.static(uploadDir, { maxAge: '7d' }));
+const { mediaAuth, attachScope, attachmentAccess } = require('./middleware/attachmentAccess');
+app.use('/uploads', mediaAuth, attachScope, attachmentAccess);
 
 // 健康检查（无需鉴权）
 app.get('/api/health', (req, res) => {

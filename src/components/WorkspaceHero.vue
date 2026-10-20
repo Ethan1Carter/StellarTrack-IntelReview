@@ -68,7 +68,7 @@ defineProps({
   }
 }
 h1 { margin: 11px 0 7px; font-size: 27px; line-height: 1.2; letter-spacing: -.035em; }
-p { margin: 0; color: #CBE6F2; font-size: 13px; }
+p { margin: 0; color: #CBE6F2; font-size: 13px; line-height:1.7; }
 .workspace-hero-actions {
   position: relative;
   z-index: 3;
@@ -87,6 +87,7 @@ p { margin: 0; color: #CBE6F2; font-size: 13px; }
     backdrop-filter: blur(9px);
   }
   :deep(.el-button:hover) { background: rgba(255, 255, 255, .23); border-color: rgba(255, 255, 255, .58); }
+  :deep(.el-button + .el-button) { margin-left:0; }
 }
 .workspace-hero-watermark {
   position: absolute;

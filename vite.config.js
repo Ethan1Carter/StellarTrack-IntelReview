@@ -28,6 +28,8 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: 5173,
+      // 允许通过 ngrok 内网穿透域名访问（Vite 5.4+ 默认拦截未知 Host）
+      allowedHosts: ['.ngrok-free.app', '.ngrok.io', '.ngrok.app', '.ngrok-free.dev'],
       proxy: {
         '/api': {
           target: env.VITE_PROXY_TARGET || 'http://127.0.0.1:3000',

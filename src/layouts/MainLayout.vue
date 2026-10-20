@@ -259,6 +259,7 @@ const MENU_CONFIG = [
     roles: ['student', 'class_admin', 'counselor', 'college_admin', 'school_admin', 'super_admin']
   },
   // 申报
+  { path: '/growth-plan', title: '成长行动计划', icon: 'TrendCharts', roles: ['student', 'class_admin', 'counselor', 'college_admin', 'school_admin', 'super_admin'] },
   { path: '/apply', title: '申报加分', icon: 'EditPen', roles: ['student', 'class_admin'] },
   { path: '/my-applications', title: '我的申报', icon: 'Tickets', roles: ['student', 'class_admin'] },
   { path: '/my-honors', title: '我的荣誉', icon: 'Medal', roles: ['student', 'class_admin'] },
@@ -300,7 +301,7 @@ const MENU_CONFIG = [
   { path: '/notices', title: '公告通知(管理)', icon: 'Bell', roles: ['counselor', 'college_admin', 'school_admin', 'super_admin'] },
   { path: '/logs', title: '操作日志', icon: 'Notebook', roles: ['school_admin', 'super_admin'] },
   { path: '/recycles', title: '数据回收(回收站)', icon: 'Delete', roles: ['school_admin', 'super_admin'] },
-  { path: '/backups', title: '数据备份', icon: 'FolderOpened', roles: ['school_admin', 'super_admin'] },
+  { path: '/backups', title: '数据备份', icon: 'FolderOpened', roles: ['super_admin'] },
   // 个人
   { path: '/profile', title: '个人中心', icon: 'Avatar', roles: ['student', 'class_admin', 'counselor', 'college_admin', 'school_admin', 'super_admin'] }
 ];

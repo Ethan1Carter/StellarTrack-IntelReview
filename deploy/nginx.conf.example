@@ -4,6 +4,16 @@ server {
 
     root /var/www/student-assessment/dist;
     index index.html;
+    # 一次最多 10 份、每份 10MB 的证明材料，预留 multipart 开销。
+    client_max_body_size 110m;
+
+    location = /api/backups/upload {
+        client_max_body_size 512m;
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 
     location / {
         try_files $uri $uri/ /index.html;
@@ -19,6 +29,7 @@ server {
     }
 
     location /uploads/ {
+        # 必须经过后端鉴权，不能改为公开 alias 上传目录。
         proxy_pass http://127.0.0.1:3000/uploads/;
         proxy_set_header Host $host;
     }

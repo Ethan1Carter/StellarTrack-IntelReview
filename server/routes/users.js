@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs/promises');
 const router = express.Router();
 const { User, Class, College, Message, sequelize } = require('../models');
 const { Op } = require('sequelize');
@@ -13,10 +14,59 @@ const { requireSchoolAdmin, requireAdmin, requireCollegeAbove, requireCollegeAdm
 const { writeOperateLog } = require('../middleware/logger');
 const config = require('../config');
 const XLSX = require('xlsx');
-const { upload, compressImages, toFileUrl } = require('../middleware/upload');
+const { excelUpload } = require('../middleware/upload');
+const { assertUserAccess, assertCollegeAccess, schoolWhere, positiveId } = require('../utils/accessPolicy');
 const { invalidateScopeCache } = require('../middleware/scope');
+const { syncClassAdminAssignment } = require('../services/classAdminAssignment');
 
 router.use(auth);
+
+// 普通编辑接口不接受审批状态、主键、登录记录等内部字段。
+const USER_FIELDS = ['username', 'realName', 'name', 'employeeNo', 'jobNo', 'studentNo',
+  'password', 'role', 'status', 'gender', 'phone', 'email', 'schoolId', 'collegeId', 'classId', 'grade', 'major'];
+const userPayload = raw => Object.fromEntries(USER_FIELDS.filter(key => Object.hasOwn(raw, key)).map(key => [key, raw[key]]));
+
+async function validatePlacement(req, data, current = null) {
+  const final = { ...(current?.toJSON ? current.toJSON() : current || {}), ...data };
+  for (const key of ['schoolId', 'collegeId', 'classId']) {
+    if (final[key] != null && final[key] !== '' && !positiveId(final[key])) throw new AppError(`${key} 参数无效`, 400);
+    final[key] = positiveId(final[key]);
+  }
+  if (final.classId) {
+    const cls = await Class.findByPk(final.classId);
+    if (!cls) throw new AppError('班级不存在', 400);
+    if (final.collegeId && final.collegeId !== Number(cls.collegeId)) throw new AppError('班级与院系不一致', 400);
+    final.collegeId = Number(cls.collegeId);
+  }
+  if (final.collegeId) {
+    assertCollegeAccess(req, final.collegeId);
+    const college = await College.findByPk(final.collegeId);
+    if (!college) throw new AppError('院系不存在', 400);
+    if (final.schoolId && final.schoolId !== Number(college.schoolId)) throw new AppError('学校与院系不一致', 400);
+    final.schoolId = positiveId(college.schoolId);
+  }
+  if (req.role === 'school_admin' && (!positiveId(req.user?.schoolId) || final.schoolId !== Number(req.user.schoolId))) {
+    throw new AppError('只能在本校维护用户', 403);
+  }
+  if (['student', 'class_admin', 'counselor', 'college_admin'].includes(final.role) && !final.collegeId) throw new AppError('请选择所属院系', 400);
+  if (final.role === 'student' && !final.classId) throw new AppError('学生必须选择所属班级', 400);
+  // 用最终角色和归属再次校验，防止通过降级/转院绕过目标账号检查。
+  assertUserAccess(req, final);
+  Object.assign(data, { schoolId: final.schoolId, collegeId: final.collegeId, classId: final.classId });
+}
+
+router.param('id', async (req, _res, next, id) => {
+  try {
+    const user = await User.findByPk(id);
+    if (!user) throw new AppError('用户不存在', 404);
+    const action = req.path.split('/').pop();
+    // 注册审批有独立审批人校验；个人晋升仍允许本人提交。
+    if (action !== 'approve-role' && !(action === 'apply-role' && Number(id) === req.userId)) {
+      assertUserAccess(req, user, { read: req.method === 'GET' });
+    }
+    next();
+  } catch (error) { next(error); }
+});
 
 // ===== 前后端状态值兼容：前端用 1(启用)/0(禁用)，后端数据库用 enum('active'/'disabled') =====
 const statusToEnum = (v) => {
@@ -32,8 +82,7 @@ const statusToBoolInt = (v) => (v === 'active' || v === 1 || v === '1' ? 1 : 0);
 const parseId = (v) => {
   if (v == null || v === '') return null;
   if (typeof v === 'object' && typeof v.id !== 'undefined') return parseId(v.id);
-  const n = typeof v === 'number' ? v : parseInt(String(v).trim(), 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  return positiveId(v);
 };
 // 院管/辅导员角色接口：获取登录用户“最新”的 collegeId。
 // 防止两种情况：① JWT token 是老的（用户还没重新登录），当时 collegeId 是 null；② 数据库里刚被改成非 null 但 token 未刷新。
@@ -124,6 +173,7 @@ router.get('/', requireAdmin, async (req, res, next) => {
     Object.assign(where, likeCondition(keyword, ['username', 'realName', 'studentNo', 'employeeNo']) || {});
 
     // 数据范围控制
+    Object.assign(where, schoolWhere(req, 'schoolId'));
     if (req.role === 'counselor') {
       // 辅导员仅可见本班学生 + 班级管理员
       const myClasses = await Class.findAll({ where: { counselorId: req.userId }, attributes: ['id'] });
@@ -141,7 +191,7 @@ router.get('/', requireAdmin, async (req, res, next) => {
       }
     } else if (req.role === 'college_admin') {
       const myCollegeId = await resolveMyCollegeId(req);
-      if (myCollegeId != null) where.collegeId = myCollegeId;
+      where.collegeId = myCollegeId || -1;
     }
 
     const { count, rows } = await User.findAndCountAll({
@@ -165,7 +215,7 @@ router.post('/', requireCollegeAbove, async (req, res, next) => {
   try {
     const raw = req.body || {};
     // ↓ 前端 Users.vue 表单字段名向后端 User 模型字段兼容映射
-    const data = { ...raw };
+    const data = userPayload(raw);
     if (raw.name != null && data.realName == null) data.realName = raw.name;
     if (raw.jobNo != null && data.employeeNo == null) data.employeeNo = raw.jobNo;
     if (raw.gender && !['male','female'].includes(raw.gender)) {
@@ -191,7 +241,7 @@ router.post('/', requireCollegeAbove, async (req, res, next) => {
       class_admin: []
     };
     const allowList = ALLOW_CREATE_BY_ROLE[req.role] || [];
-    if (allowList.length > 0 && !allowList.includes(data.role)) {
+    if (!allowList.includes(data.role)) {
       const labelMap = { super_admin:'超级管理员', school_admin:'学校管理员', college_admin:'院系管理员', counselor:'辅导员', class_admin:'班级管理员', student:'学生' };
       throw new AppError(
         `当前账号是${labelMap[req.role]||req.role}，无权创建「${labelMap[data.role]||data.role}」角色。` +
@@ -256,6 +306,8 @@ router.post('/', requireCollegeAbove, async (req, res, next) => {
     }
     if (data.schoolId == null) data.schoolId = parseId(req.user?.schoolId);
 
+    await validatePlacement(req, data);
+    data.roleStatus = 'active';
     data.password = hashPassword(data.password || config.defaultPassword);
 
     // ===== 并发冲突兜底：仅唯一约束冲突才重试，上限 5 次 =====
@@ -267,7 +319,11 @@ router.post('/', requireCollegeAbove, async (req, res, next) => {
     for (let attempt = 0; attempt < MAX_UNIQUE_RETRY; attempt++) {
       try {
         if (!data.uniqueId) data.uniqueId = await buildUserUniqueId({ collegeId: data.collegeId, classId: data.classId });
-        user = await User.create(data);
+        user = await sequelize.transaction(async (transaction) => {
+          const created = await User.create(data, { transaction });
+          await syncClassAdminAssignment(created, transaction);
+          return created;
+        });
         break;
       } catch (createErr) {
         if (createErr.name !== 'SequelizeUniqueConstraintError') throw createErr;
@@ -279,6 +335,7 @@ router.post('/', requireCollegeAbove, async (req, res, next) => {
       }
     }
 
+    invalidateScopeCache();
     await writeOperateLog({
       userId: req.userId, username: req.username, role: req.role,
       module: '用户管理', action: '新增用户',
@@ -311,7 +368,7 @@ router.get('/staff', requireAdmin, async (req, res, next) => {
     }
     if (req.role === 'college_admin') {
       const myCollegeId = await resolveMyCollegeId(req);
-      if (myCollegeId != null) where.collegeId = myCollegeId;
+      where.collegeId = myCollegeId || -1;
     }
 
     const list = await User.findAll({
@@ -370,10 +427,7 @@ router.get('/template', requireCollegeAdmin, async (req, res, next) => {
 /**
  * POST /api/users/import - 批量导入别名（对应前端 /users/import）
  */
-router.post('/import', requireCollegeAbove, upload.single('file'), async (req, res, next) => {
-  const batchImport = router.stack.find(l => l.route && l.route.path === '/batch-import');
-  if (batchImport) return batchImport.route.stack[0].handle(req, res, next);
-});
+router.post('/import', requireCollegeAbove, excelUpload.single('file'), batchImportHandler);
 
 /**
  * POST /api/users/batch-status - 批量启用/停用用户（必须在 /:id 之前）
@@ -393,8 +447,9 @@ router.post('/batch-status', requireCollegeAbove, async (req, res, next) => {
     let skippedSelf = safeIds.length !== ids.length;
     const finalIds = [];
     for (const id of safeIds) {
-      const u = await User.findByPk(id, { attributes: ['id', 'role', 'collegeId', 'username', 'realName'] });
+      const u = await User.findByPk(id, { attributes: ['id', 'role', 'schoolId', 'collegeId', 'classId', 'username', 'realName'] });
       if (!u) continue;
+      assertUserAccess(req, u);
       if (u.role === 'super_admin') { skippedSuperAdmin = true; continue; }
       // 院系管理员只能操作本院用户
       if (req.role === 'college_admin') {
@@ -438,6 +493,7 @@ router.post('/batch-delete', requireCollegeAbove, async (req, res, next) => {
     const myCollegeId = await resolveMyCollegeId(req);
     for (const id of safeIds) {
       const u = await User.findByPk(id);
+      if (u) assertUserAccess(req, u);
       if (u && u.role === 'super_admin') { skippedSuperAdmin = true; continue; }
       if (u && req.role === 'college_admin' && Number(u.collegeId) !== Number(myCollegeId)) continue;
       if (u) finalIds.push(u.id);
@@ -485,7 +541,7 @@ router.get('/role-applications', requireAdmin, async (req, res, next) => {
       // 学院管理员的审批人 = 本校的学校管理员，所以只列出本校的申请
       where.requestedRole = 'college_admin';
       const mySchoolId = await resolveMySchoolId(req);
-      if (mySchoolId != null) where.schoolId = mySchoolId;
+      where.schoolId = mySchoolId || -1;
     } else if (req.role === 'super_admin') {
       where.requestedRole = 'school_admin';
     } else {
@@ -515,7 +571,8 @@ router.get('/role-applications', requireAdmin, async (req, res, next) => {
 /**
  * POST /api/users/batch-import - 学生Excel批量导入（必须在 /:id 之前）
  */
-router.post('/batch-import', requireCollegeAbove, upload.single('file'), async (req, res, next) => {
+router.post('/batch-import', requireCollegeAbove, excelUpload.single('file'), batchImportHandler);
+async function batchImportHandler(req, res, next) {
   try {
     if (!req.file) throw new AppError('请上传Excel文件', 400);
     const wb = XLSX.readFile(req.file.path);
@@ -527,11 +584,12 @@ router.post('/batch-import', requireCollegeAbove, upload.single('file'), async (
     const failMsgs = [];
     // 统一口径：院管导入时缺省院系一律取 resolveMyCollegeId 的结果（循环外解析一次即可）
     const importerCollegeId = await resolveMyCollegeId(req);
-    for (const row of rows) {
+    if (rows.length > 5000) throw new AppError('单次最多导入5000行，请拆分文件', 400);
+    for (const [rowIndex, row] of rows.entries()) {
       try {
         const username = row['学号'] || row['账号'] || row['username'];
         const realName = row['姓名'] || row['name'];
-        if (!username || !realName) { failed++; failMsgs.push(`行:${JSON.stringify(row).slice(0,60)} 缺学号或姓名`); continue; }
+        if (!username || !realName) { failed++; failMsgs.push(`第${rowIndex + 2}行：缺学号或姓名`); continue; }
         const gender = row['性别'] || row['gender'];
         const password = String(row['密码'] || row['初始密码'] || row['password'] || config.defaultPassword);
         const collegeName = row['院系'] || row['院系名称'] || row['college'];
@@ -542,8 +600,10 @@ router.post('/batch-import', requireCollegeAbove, upload.single('file'), async (
 
         let collegeId = null;
         if (collegeName) {
-          const c = await College.findOne({ where: { name: collegeName } });
+          const c = await College.findOne({ where: { name: collegeName, ...schoolWhere(req, 'schoolId'),
+            ...(req.role === 'college_admin' ? { id: importerCollegeId || -1 } : {}) } });
           if (c) collegeId = c.id;
+          else throw new AppError('院系不存在或无权导入该院系', 400);
         }
         if (!collegeId && req.role === 'college_admin') collegeId = importerCollegeId;
 
@@ -560,6 +620,7 @@ router.post('/batch-import', requireCollegeAbove, upload.single('file'), async (
                     : 'student');
 
         const exist = await User.findOne({ where: { username: String(username).trim() } });
+        if (exist) assertUserAccess(req, exist);
         const payload = {
           username: String(username).trim(),
           realName: String(realName).trim(),
@@ -569,6 +630,7 @@ router.post('/batch-import', requireCollegeAbove, upload.single('file'), async (
           status: 'active',
           password: hashPassword(password)
         };
+        await validatePlacement(req, payload, exist);
         // 批量导入新增用户：生成12位唯一ID
         if (!exist) {
           const sCode = padZero((config.idGen && config.idGen.schoolCode) || 1, 2);
@@ -588,22 +650,29 @@ router.post('/batch-import', requireCollegeAbove, upload.single('file'), async (
           delete payload.username; delete payload.password;
           // 批量导入更新：不允许覆盖 uniqueId
           delete payload.uniqueId;
-          await exist.update(payload);
+          await sequelize.transaction(async transaction => {
+            await exist.update(payload, { transaction });
+            await syncClassAdminAssignment(exist, transaction);
+          });
           updated++;
         } else {
-          await User.create(payload);
+          await sequelize.transaction(async transaction => {
+            const created = await User.create(payload, { transaction });
+            await syncClassAdminAssignment(created, transaction);
+          });
           added++;
         }
       } catch (e) {
         failed++;
-        failMsgs.push(`行 ${JSON.stringify(row).slice(0,60)} err:${e.message}`);
+        failMsgs.push(`第${rowIndex + 2}行：${e.message}`);
       }
     }
     if (failMsgs.length) console.warn('[batch-import fails]', failMsgs.slice(0, 10));
     invalidateScopeCache();
     res.success({ added, updated, failed, failMsgs: failMsgs.slice(0, 20), total: rows.length });
   } catch (err) { next(err); }
-});
+  finally { if (req.file?.path) await fs.unlink(req.file.path).catch(() => {}); }
+}
 
 /**
  * GET /api/users/permissions - 权限列表（必须在 /:id 之前）
@@ -636,6 +705,11 @@ router.get('/export', requireAdmin, async (req, res, next) => {
     if (collegeId) where.collegeId = collegeId;
     if (classId) where.classId = classId;
     Object.assign(where, likeCondition(keyword, ['username', 'realName', 'studentNo', 'employeeNo']) || {});
+    Object.assign(where, schoolWhere(req, 'schoolId'));
+    if (req.role === 'class_admin') {
+      where.classId = req.scope?.classIds || [];
+      where.role = { [Op.in]: ['student', 'class_admin'] };
+    }
     if (req.role === 'counselor') {
       const myClasses = await Class.findAll({ where: { counselorId: req.userId }, attributes: ['id'] });
       where.classId = myClasses.map(c => c.id);
@@ -775,7 +849,7 @@ router.put('/:id', requireCollegeAbove, async (req, res, next) => {
     }
 
     const raw = req.body || {};
-    const data = { ...raw };
+    const data = userPayload(raw);
     if (raw.name != null && data.realName == null) data.realName = raw.name;
     if (raw.jobNo != null && data.employeeNo == null) data.employeeNo = raw.jobNo;
     if (data.status != null) data.status = statusToEnum(data.status);
@@ -867,8 +941,12 @@ router.put('/:id', requireCollegeAbove, async (req, res, next) => {
     }
     delete data.username;
     delete data.uniqueId; // 12位只读唯一ID，禁止修改
-    await user.update(data);
-    invalidateScopeCache(user.id);
+    await validatePlacement(req, data, user);
+    await sequelize.transaction(async (transaction) => {
+      await user.update(data, { transaction });
+      await syncClassAdminAssignment(user, transaction);
+    });
+    invalidateScopeCache();
 
     await writeOperateLog({
       userId: req.userId, username: req.username, role: req.role,

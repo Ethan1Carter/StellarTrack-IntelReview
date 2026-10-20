@@ -102,9 +102,9 @@ expectResult('态5 college_admin 传入外院班级 -> 403',
   () => narrowClassIds(fakeReq({ isGlobal: false, classIds: [21, 22], collegeIds: [4] }), 99), null, 403);
 
 console.log('\n===== 五态矩阵：院系维度 =====');
-expectResult('态1 校管未传 -> 不加过滤',
+expectResult('态1 平台管理员未传 -> 不加过滤',
   () => narrowCollegeIds(fakeReq({ isGlobal: true, classIds: null, collegeIds: null }), undefined), null);
-expectResult('态2 校管传入 -> 仅过滤该院',
+expectResult('态2 平台管理员传入 -> 仅过滤该院',
   () => narrowCollegeIds(fakeReq({ isGlobal: true, classIds: null, collegeIds: null }), 5), [5]);
 expectResult('态3 院管未传 -> 本院白名单',
   () => narrowCollegeIds(fakeReq({ isGlobal: false, classIds: [21], collegeIds: [4] }), undefined), [4]);

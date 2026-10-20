@@ -11,7 +11,12 @@
  * - 劳育F5：志愿服务2（封顶3）
  * - 总分 = 14 + 54.15 + 4.5 + 0 + 2 = 74.65
  */
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+// 此脚本会写入测试数据，禁止自动读取日常 .env。
+if (process.env.NODE_ENV !== 'test' || process.env.ALLOW_DB_TEST_WRITES !== 'true'
+    || !/(^|[_-])(test|testing)([_-]|$)/i.test(process.env.DB_NAME || '')) {
+  console.error('请使用独立测试库，并显式设置 NODE_ENV=test、ALLOW_DB_TEST_WRITES=true 和包含 test 标记的 DB_NAME。');
+  process.exit(1);
+}
 const { sequelize, User, Class, College, BonusModule, Application, CourseScore } = require('../models');
 const { calcEvaluation } = require('../utils/evaluation');
 const { Op } = require('sequelize');
@@ -202,6 +207,7 @@ async function runTest() {
   console.log(`  总分: 预期≈${expectedTotal.toFixed(2)}, 实际=${result.totalScore}, 误差=${totalDiff.toFixed(2)} ${totalDiff < 0.5 ? '✓' : '✗'}`);
   console.log(`\n${allPass && totalDiff < 0.5 ? '✓ 所有验证通过！' : '✗ 存在验证失败项，请检查'}`);
 
+  if (!allPass || totalDiff >= 0.5) throw new Error('综测计算断言失败');
   return result;
 }
 
@@ -227,11 +233,13 @@ async function main() {
     await setup();
     await runTest();
   } catch (e) {
+    process.exitCode = 1;
     console.error('测试失败:', e.message);
     console.error(e.stack);
   } finally {
-    await cleanup();
-    process.exit(0);
+    try { await cleanup(); }
+    catch (error) { console.error('清理测试数据失败:', error.message); process.exitCode = 1; }
+    await sequelize.close();
   }
 }
 

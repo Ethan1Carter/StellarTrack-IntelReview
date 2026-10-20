@@ -320,7 +320,7 @@ CREATE TABLE public.approval_records (
   approver_id       INTEGER      NOT NULL,
   approver_name     VARCHAR(50),
   approver_role     VARCHAR(50),
-  action            VARCHAR(20) CHECK (action IS NULL OR action IN ('pass','approve','reject','return','transfer')),
+  action            VARCHAR(20) CHECK (action IS NULL OR action IN ('pass','approve','reject','return','transfer','modify','withdraw')),
   comment           TEXT,
   assigned_at       TIMESTAMP,
   handled_at        TIMESTAMP,

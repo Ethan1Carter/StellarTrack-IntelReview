@@ -7,6 +7,8 @@ const fs = require('fs');
 const sharp = require('sharp');
 const dayjs = require('dayjs');
 const config = require('../config');
+const { positiveId } = require('../utils/accessPolicy');
+const { AppError } = require('./errorHandler');
 
 const UPLOAD_ROOT = path.resolve(__dirname, '../', config.upload.dir);
 if (!fs.existsSync(UPLOAD_ROOT)) fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
@@ -15,8 +17,10 @@ const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
     // 按日期分子目录：uploads/20240115/申报ID或用户ID
     const dateFolder = dayjs().format('YYYYMMDD');
-    const subFolder = req.body?.applicationId || req.userId || 'common';
-    const folder = path.join(UPLOAD_ROOT, `${dateFolder}_${subFolder}`);
+    // 路径归属仅取已鉴权的用户，不接受客户端指定目录。
+    const ownerId = positiveId(req.userId);
+    if (!ownerId) return cb(new AppError('请先登录', 401));
+    const folder = path.join(UPLOAD_ROOT, `${dateFolder}_u${ownerId}`);
     if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
     cb(null, folder);
   },
@@ -28,13 +32,11 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (_req, file, cb) => {
-  const imageTypes = /jpg|jpeg|png|webp|gif|bmp/;
-  const pdfType = /pdf/;
   const ext = path.extname(file.originalname).toLowerCase();
-  const extname = imageTypes.test(ext) || pdfType.test(ext);
-  const mimetype = imageTypes.test(file.mimetype) || file.mimetype === 'application/pdf';
-  if (extname && mimetype) cb(null, true);
-  else cb(new Error('仅支持上传图片（JPG/PNG/WEBP/GIF）或 PDF 文件'), false);
+  const allowed = { '.jpg': ['image/jpeg'], '.jpeg': ['image/jpeg'], '.png': ['image/png'],
+    '.webp': ['image/webp'], '.gif': ['image/gif'], '.bmp': ['image/bmp', 'image/x-ms-bmp'], '.pdf': ['application/pdf'] };
+  if (allowed[ext]?.includes(file.mimetype)) cb(null, true);
+  else cb(new AppError('仅支持上传图片（JPG/PNG/WEBP/GIF）或 PDF 文件', 400), false);
 };
 
 const upload = multer({
@@ -67,8 +69,8 @@ const excelUpload = multer({
     const ok = ext === '.xlsx' || ext === '.xls';
     const mimeOk = file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
                    file.mimetype === 'application/vnd.ms-excel';
-    if (ok || mimeOk) cb(null, true);
-    else cb(new Error('仅支持上传 Excel 文件（.xlsx / .xls）'), false);
+    if (ok && (mimeOk || file.mimetype === 'application/octet-stream')) cb(null, true);
+    else cb(new AppError('仅支持上传 Excel 文件（.xlsx / .xls）', 400), false);
   },
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
@@ -79,7 +81,7 @@ const excelUpload = multer({
  */
 async function compressImages(req, _res, next) {
   try {
-    if (!req.files || req.files.length === 0) return next();
+    if (!req.files || req.files.length === 0) return require('./attachmentAccess').validateAttachmentReferences(req, _res, next);
     const compressed = [];
     for (const file of req.files) {
       // 跳过 PDF 等非图片文件，直接保留原文件
@@ -116,7 +118,7 @@ async function compressImages(req, _res, next) {
       }
     }
     req.files = compressed;
-    next();
+    require('./attachmentAccess').validateAttachmentReferences(req, _res, next);
   } catch (err) {
     next(err);
   }

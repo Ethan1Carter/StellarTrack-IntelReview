@@ -88,11 +88,12 @@ const rules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 };
 
+// 演示账号：与数据库实际账号保持一致（测评链路：学生 → 班级管理员 → 辅导员 → 学院管理员）
 const demoAccounts = [
-  { label: '学校管理员', username: 'admin', password: 'admin123', color: '#F56C6C' },
-  { label: '院系管理员（计算机学院）', username: 'admin_cs', password: '123456', color: '#409EFF' },
-  { label: '辅导员', username: 'counselor1', password: '123456', color: '#67C23A' },
-  { label: '学生', username: 'student2023CS01', password: '123456', color: '#E6A23C' }
+  { label: '学生', username: '2510240201', password: '123456' },
+  { label: '班级管理员', username: '2510240202', password: '123456' },
+  { label: '辅导员', username: 'zsxy001', password: '123456' },
+  { label: '院系管理员', username: 'rgznydsjxy', password: '123456' }
 ];
 
 const fillAccount = (d) => {

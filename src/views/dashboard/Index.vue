@@ -7,6 +7,7 @@
         <p>从院系、班级到学生，快速掌握考评进度与成长趋势。</p>
       </div>
       <div class="dashboard-actions">
+        <el-button v-if="currentView === 'individual'" @click="$router.push({ path: '/growth-plan', query: appliedFilters.studentId ? { studentId: appliedFilters.studentId } : {} })">查看成长行动</el-button>
         <el-button
           v-if="currentView === 'individual'"
           type="warning"
@@ -368,7 +369,7 @@
         <!-- AI智能分析模块 -->
         <div class="card mt-16 ai-hub-card" v-loading="aiLoading">
           <div class="card-title">
-            <span>🤖 AI智能分析</span>
+            <span>成长数据洞察 · 规则辅助</span>
             <el-button
               type="primary"
               size="small"
@@ -540,7 +541,7 @@
               </el-button>
             </div>
           </template>
-          <el-empty v-else-if="!aiLoading" description="点击'生成分析报告'开始AI智能分析" />
+          <el-empty v-else-if="!aiLoading" description="点击“生成分析报告”，按当前已记录数据生成规则辅助建议" />
         </div>
 
         <div class="card mt-16">
@@ -1121,8 +1122,22 @@ async function loadUnitComparison() {
   }
 }
 
+let aiRequestVersion = 0;
+function clearAIAnalysis() {
+  aiRequestVersion += 1;
+  aiLoading.value = false;
+  aiInsights.value = [];
+  aiRisks.value = [];
+  aiSuggestions.value = [];
+  aiCrossComparison.value = [];
+  aiAnomalyNotes.value = [];
+  aiCauseAnalysis.value = [];
+  aiImprovementActions.value = [];
+}
+
 async function loadAIAnalysis() {
   if (!hasAccess.value) return;
+  const requestVersion = ++aiRequestVersion;
   aiLoading.value = true;
   try {
     const params = {};
@@ -1131,7 +1146,13 @@ async function loadAIAnalysis() {
     if (appliedFilters.grade) params.grade = appliedFilters.grade;
     if (appliedFilters.classId) params.classId = appliedFilters.classId;
 
+    if (appliedFilters.studentId) params.studentId = appliedFilters.studentId;
+    params.scope = appliedFilters.studentId ? 'student' : appliedFilters.classId ? 'class' : appliedFilters.collegeId ? 'college' : undefined;
+    const selected = semesterOptions.value.find(item => item.value === selectedSemester.value);
+    if (selected) { params.academicYear = selected.academicYear; params.semester = selected.semester; }
+
     const r = await request({ url: '/ai-analysis/comprehensive', method: 'GET', params });
+    if (requestVersion !== aiRequestVersion) return;
     // 处理洞察数据 - 将对象转换为字符串数组
     aiInsights.value = (r?.insights || []).map(i => i.content || i.text || String(i));
     aiRisks.value = (r?.risks || []).map(i => (i.title ? i.title + '：' : '') + (i.desc || i.content || String(i)));
@@ -1141,6 +1162,7 @@ async function loadAIAnalysis() {
     aiCauseAnalysis.value = r?.causeAnalysis || [];
     aiImprovementActions.value = r?.improvementActions || [];
   } catch (_) {
+    if (requestVersion !== aiRequestVersion) return;
     aiInsights.value = [];
     aiRisks.value = [];
     aiSuggestions.value = [];
@@ -1148,9 +1170,9 @@ async function loadAIAnalysis() {
     aiAnomalyNotes.value = [];
     aiCauseAnalysis.value = [];
     aiImprovementActions.value = [];
-    ElMessage.error('AI分析加载失败');
+    ElMessage.error('成长数据洞察加载失败');
   } finally {
-    aiLoading.value = false;
+    if (requestVersion === aiRequestVersion) aiLoading.value = false;
   }
 }
 
@@ -1176,6 +1198,7 @@ function onClassChange() {
 }
 
 async function onConfirm() {
+  clearAIAnalysis();
   loading.value = true;
 
   // 同步筛选条件到已应用的筛选
@@ -1236,6 +1259,7 @@ function resetFilters() {
 }
 
 function viewStudent(row) {
+  clearAIAnalysis();
   if (row.studentId) {
     filters.studentId = row.studentId;
     onConfirm();
@@ -1243,6 +1267,7 @@ function viewStudent(row) {
 }
 
 function onSemesterChange() {
+  clearAIAnalysis();
   if (appliedFilters.studentId) {
     loadIndividual(appliedFilters.studentId);
   }
@@ -1315,6 +1340,11 @@ async function exportAIReport() {
     if (appliedFilters.grade) params.grade = appliedFilters.grade;
     if (appliedFilters.classId) params.classId = appliedFilters.classId;
 
+    if (appliedFilters.studentId) params.studentId = appliedFilters.studentId;
+    params.scope = appliedFilters.studentId ? 'student' : appliedFilters.classId ? 'class' : appliedFilters.collegeId ? 'college' : undefined;
+    const selected = semesterOptions.value.find(item => item.value === selectedSemester.value);
+    if (selected) { params.academicYear = selected.academicYear; params.semester = selected.semester; }
+
     const blob = await request({
       url: '/ai-analysis/report',
       method: 'GET',
@@ -1324,7 +1354,7 @@ async function exportAIReport() {
     const url = window.URL.createObjectURL(new Blob([blob]));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `AI分析报告_${currentViewScope.value}_${Date.now()}.xlsx`;
+    a.download = `成长数据分析报告_${currentViewScope.value}_${Date.now()}.xlsx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

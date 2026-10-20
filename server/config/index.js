@@ -73,7 +73,9 @@ module.exports = {
     baseUrl: (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
     apiKey: process.env.AI_API_KEY || '',
     model: process.env.AI_MODEL || 'gpt-4o-mini',
-    timeoutMs: parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '45000', 10)
+    timeoutMs: parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '45000', 10),
+    pdf: { pdfinfo: process.env.AI_PDFINFO_PATH || 'pdfinfo', pdftoppm: process.env.AI_PDFTOPPM_PATH || 'pdftoppm',
+      maxPages: parseInt(process.env.AI_PDF_MAX_PAGES || '5', 10) }
   },
 
   // 系统默认密码（批量导入学生账号默认密码）

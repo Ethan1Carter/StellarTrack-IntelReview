@@ -4,6 +4,10 @@
   "description": "星轨智评 - 高校五育综合评价平台后端服务",
   "main": "app.js",
   "scripts": {
+    "migrate:growth-plans": "node scripts/migrate-growth-plans.js",
+    "check:ai-runtime": "node scripts/check-ai-runtime.js",
+    "test:growth-db": "node scripts/test-growth-plan-db.js --isolated-schema",
+    "test": "node --test tests/*.test.js",
     "start": "node app.js",
     "dev": "nodemon app.js",
     "init-db": "node scripts/init-db.js",
