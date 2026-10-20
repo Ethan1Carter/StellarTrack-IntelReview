@@ -103,7 +103,7 @@
         <!-- 【重构】操作列：详情抽屉 + 行内一键审批按钮，不用再"关闭详情再审批" -->
         <el-table-column label="操作" width="380" fixed="right" align="center">
           <template #default="{row}">
-            <el-button link type="primary" @click="openDetail(row)">详情/流程</el-button>
+            <el-button link type="primary" @click="openDetail(row)">核对材料/流程</el-button>
             <!-- 班级管理员：待审批单据可审批；终审/申诉中状态被锁定 -->
             <template v-if="mode==='pending' && canApprove(row) && isClassAdmin">
               <el-button link type="success" @click="quickAction(row, 'approve')">通过</el-button>
@@ -144,7 +144,7 @@
     </div>
 
     <!-- 【重构】详情抽屉：内嵌"审批流程时间线" + 底部直接审批操作栏，不关闭抽屉也能审批 -->
-    <el-drawer v-model="detailVisible" size="min(920px, 94vw)" :with-header="false" destroy-on-close>
+    <el-drawer v-model="detailVisible" size="min(1280px, 96vw)" :with-header="false" destroy-on-close>
       <div class="drawer-inner" v-if="current">
         <!-- 顶部标题 -->
         <div class="drawer-header">
@@ -163,10 +163,14 @@
               <span>提交时间：{{ fmtFull(current.createdAt) }}</span>
             </div>
           </div>
-          <el-button link @click="detailVisible=false" style="font-size:18px;">✕</el-button>
+          <el-button link aria-label="关闭审核详情" @click="detailVisible=false" style="font-size:18px;">✕</el-button>
         </div>
 
-        <!-- 主体内容：左45%当前审批阶段 + 右55%申报详情 -->
+        <MaterialReviewWorkspace :key="current.id" :app="current" />
+
+        <!-- 审批过程与学生信息保留在材料核对区下方。 -->
+        <details class="process-details" :open="current.status === 'appealing'">
+        <summary>学生信息、审批流程与历史意见 · {{ currentStageText(current) }}</summary>
         <el-row :gutter="16" style="padding: 12px 20px 8px;">
           <!-- 简化审批流程：只显示"正在审批阶段"（醒目） + 已完成记录（历史审批意见区已详细展示） -->
           <el-col :md="11" :xs="24">
@@ -234,33 +238,6 @@
                   <span class="sic-lbl">专业/年级</span><span class="sic-val">{{ (current.classInfo?.major || '-') + ' · ' + (current.classInfo?.grade || '-') }}</span>
                 </div>
               </div>
-            </div>
-
-            <!-- 证明材料（附件预览）直接展示，无需再点进 ApplyDetailDialog -->
-            <AIReviewEvidence :review="current.extraData?.aiReview" />
-            <p v-if="current.extraData?.aiConfirmation?.reason">申报人核对说明：{{ current.extraData.aiConfirmation.reason }}</p>
-            <el-alert v-if="current.extraData?.aiReview" class="mt-16" type="warning" show-icon :closable="false"
-              title="AI 证书归属辅助核对，请审核原件"
-              :description="current.extraData.aiReview.ownership?.message || '该历史 AI 结果尚未核验归属。'" />
-            <p v-if="current.extraData?.aiReview?.ownership" class="mt-8">
-              材料识别获奖人：{{ current.extraData.aiReview.ownership.recognizedRecipients?.map(person => person.name).join('、') || '未读取到' }}
-            </p>
-            <div class="mt-16">
-              <div class="panel-title" style="border-left-color:#67C23A;">证明材料（{{ proofFiles.length }}）</div>
-              <el-empty v-if="!proofFiles.length" description="暂无附件" :image-size="50" />
-              <el-row v-else :gutter="12">
-                <el-col v-for="(u, i) in proofFiles" :key="i" :xs="8" :sm="6" :md="6" :lg="4">
-                  <div class="proof-item">
-                    <a :href="u" target="_blank" rel="noopener">
-                      <img v-if="isImg(u)" :src="u" class="proof-img" />
-                      <div v-else class="proof-file">
-                        <el-icon :size="28"><Document /></el-icon>
-                        <span>{{ filename(u) }}</span>
-                      </div>
-                    </a>
-                  </div>
-                </el-col>
-              </el-row>
             </div>
 
             <el-descriptions :column="2" border size="small" class="mt-16">
@@ -348,6 +325,7 @@
             </div>
           </el-col>
         </el-row>
+        </details>
 
         <!-- 审批动作分为结果选择、对应表单和确认提交，避免不同结果共用同一输入区。 -->
         <div v-if="mode==='pending' && canApprove(current) && isClassAdmin" class="drawer-footer review-footer">
@@ -394,6 +372,10 @@
                 </label>
                 <el-input id="approval-comment" v-model="appr.comment" type="textarea" :rows="3" maxlength="500" show-word-limit
                   :placeholder="reviewActionMeta.placeholder" />
+                <div v-if="selectedAction === 'return'" class="reason-suggestions">
+                  <span>常用补充要求 · 插入后请按本单情况调整</span>
+                  <div><el-button v-for="reason in returnReasons" :key="reason.label" size="small" plain @click="insertReturnReason(reason.text)">{{ reason.label }}</el-button></div>
+                </div>
               </div>
             </div>
           </div>
@@ -463,7 +445,8 @@
 </template>
 
 <script setup>
-import AIReviewEvidence from '@/components/AIReviewEvidence.vue';
+import MaterialReviewWorkspace from '@/components/MaterialReviewWorkspace.vue';
+import { returnReasons, appendReviewReason } from '@/utils/reviewWorkspace';
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue';
 import dayjs from 'dayjs';
 import StatusTag from './StatusTag.vue';
@@ -475,7 +458,7 @@ import { getClassList } from '@/api/classes';
 import { getAppeals } from '@/api/appeals';
 import { useUserStore } from '@/stores/user';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Finished, Bell, School, User, Document } from '@element-plus/icons-vue';
+import { Finished, Bell, School, User } from '@element-plus/icons-vue';
 import { useRoute } from 'vue-router';
 
 const props = defineProps({ mode: { type: String, default: 'pending' } });
@@ -548,16 +531,6 @@ const loadCounselorStats = async () => {
 const quickFilter = (status) => { f.status = status; go(1); };
 const fmt = (t) => dayjs(t).format('MM-DD HH:mm');
 const fmtFull = (t) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '';
-// ===== 附件预览帮助 =====
-const isImg = (u) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(u || '');
-const filename = (u) => (u || '').split('/').pop() || '文件';
-const proofFiles = computed(() => {
-  const p = current.value?.proofUrl || current.value?.attachPhotos;
-  if (!p) return [];
-  if (Array.isArray(p)) return p.filter(Boolean);
-  return String(p).split(',').map(s => s.trim()).filter(Boolean);
-});
-
 // 当前登录用户角色便捷变量
 const isCounselor = computed(() => userStore.userInfo?.role === 'counselor');
 const isClassAdmin = computed(() => userStore.userInfo?.role === 'class_admin');
@@ -569,6 +542,11 @@ const detailVisible = ref(false);
 const subDetailVisible = ref(false);
 const current = ref(null);
 const appr = reactive({ finalScore: 0, comment: '' });
+const insertReturnReason = (text) => {
+  const next = appendReviewReason(appr.comment, text);
+  if (next === null) { ElMessage.warning('审批意见将超过 500 字，请先精简已有内容。'); return; }
+  appr.comment = next;
+};
 // 辅导员终审表单
 const finalReviewForm = reactive({ action: 'approve', finalScore: 0, comment: '' });
 // 班级管理员重新审批申诉表单
@@ -1141,7 +1119,11 @@ onMounted(async () => {
 }
 
 /* ===== 详情抽屉样式 ===== */
-.drawer-inner { height: 100%; display: flex; flex-direction: column; }
+.drawer-inner { min-height: 100%; display: flex; flex-direction: column; }
+.drawer-inner > * { flex-shrink:0; }
+.process-details { margin:0 20px 18px; border:1px solid #dbe4ef; border-radius:10px; }
+.process-details > summary { padding:14px 16px; color:#42526b; cursor:pointer; font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.process-details > summary:focus-visible { outline:2px solid var(--el-color-primary); outline-offset:2px; }
 .drawer-header {
   display:flex; align-items:flex-start; justify-content:space-between;
   padding: 16px 20px; border-bottom: 1px solid #ebeef5; background: #FAFBFC;
@@ -1293,6 +1275,9 @@ onMounted(async () => {
 .review-field label small { color: #8C99AA; font-size: 12px; font-weight: 500; }
 .review-score-field > span { display: block; margin-top: 5px; color: #7A899D; font-size: 12px; }
 .review-comment-field { grid-column: span 1; }
+.reason-suggestions { margin-top:10px; font-size:12px; color:#63758b; }
+.reason-suggestions > div { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
+.reason-suggestions :deep(.el-button + .el-button) { margin-left:0; }
 .review-action-submit { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
 .review-action-note { color: #7A899D; font-size: 12px; line-height: 1.5; }
 .review-submit-button { min-width: 108px; }

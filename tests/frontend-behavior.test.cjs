@@ -23,7 +23,7 @@ function evaluate(filename, source, mocks, sessionStorage = storage()) {
   return module.exports;
 }
 const messages = new Proxy({}, { get: () => () => {} });
-function component(relative, mocks = {}, sessionStorage = storage()) {
+function component(relative, mocks = {}, sessionStorage = storage(), props = {}) {
   const filename = path.resolve(__dirname, '..', relative);
   const { descriptor } = parse(fs.readFileSync(filename, 'utf8'), { filename });
   const script = compileScript(descriptor, { id: 'behavior-test' }).content;
@@ -42,7 +42,7 @@ function component(relative, mocks = {}, sessionStorage = storage()) {
   };
   const compiled = evaluate(filename, script, { ...defaults, ...mocks }, sessionStorage);
   const scope = vue.effectScope();
-  const state = scope.run(() => compiled.default.setup({}, { expose() {} }));
+  const state = scope.run(() => compiled.default.setup(props, { expose() {} }));
   return { state, mounted, stop: () => scope.stop(), sessionStorage };
 }
 
@@ -235,5 +235,36 @@ test('成长计划切换学生时，旧响应不能覆盖当前学生，证据�
     state.uploading.value = true;
     await state.saveTask('submitted');
     assert.equal(updates, 0);
+  } finally { fixture.stop(); }
+});
+
+test('审核页码只能定位分析时的对应附件，切换申报清空旧页码，缺失原件时不误跳其他附件', async () => {
+  const utilities = await import('../src/utils/reviewWorkspace.js');
+  const props = vue.reactive({ app: { id: 1, attachPhotos: ['/uploads/other.png', '/uploads/reviewed.pdf'],
+    extraData: { aiReview: { fileUrl: '/uploads/reviewed.pdf', document: { pageCount: 3 } } } } });
+  const fixture = component('src/components/MaterialReviewWorkspace.vue', {
+    './AIReviewEvidence.vue': {}, '@/utils/reviewWorkspace': utilities
+  }, storage(), props);
+  try {
+    const state = fixture.state;
+    assert.equal(state.activeFile.value.url, '/uploads/reviewed.pdf');
+    state.selectedUrl.value = '/uploads/other.png';
+    state.focusEvidence(2);
+    assert.equal(state.previewSrc.value, '/uploads/reviewed.pdf#page=2&view=FitH');
+    state.focusEvidence(4);
+    assert.equal(state.page.value, 2);
+    props.app = { id: 2, attachPhotos: ['/uploads/new.pdf'], extraData: { aiReview: {
+      fileUrl: '/uploads/missing.pdf', document: { pageCount: 3 }
+    } } };
+    await vue.nextTick();
+    assert.equal(state.page.value, 1);
+    assert.equal(state.activeFile.value.url, '/uploads/new.pdf');
+    assert.equal(state.sourceAvailable.value, false);
+    state.focusEvidence(2);
+    assert.equal(state.page.value, 1);
+    props.app = { id: 3, attachPhotos: [] };
+    await vue.nextTick();
+    assert.equal(state.activeFile.value, undefined);
+    assert.equal(state.previewSrc.value, '');
   } finally { fixture.stop(); }
 });

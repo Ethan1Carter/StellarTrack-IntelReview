@@ -4,6 +4,8 @@
 
 星轨智评（XINGGUI）高校五育综合评价平台，包含 Vue 3 前端和 Express + Sequelize 后端服务。
 
+最新优化：[审核工作台](docs/审核工作台优化说明.md)，支持材料与建议对照、原件页码定位和常用补充意见。后续每轮优化须先备份 GitHub，协作约定见 [AGENTS.md](AGENTS.md)。
+
 ## 技术栈
 
 - 前端：Vue 3、Vite、Element Plus、Pinia、ECharts
