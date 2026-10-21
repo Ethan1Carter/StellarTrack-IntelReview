@@ -10,6 +10,7 @@
       <el-select v-model="academicYear" aria-label="学年" @change="loadPlan"><el-option v-for="year in years" :key="year" :value="year" :label="`${year} 学年`" /></el-select>
       <el-select v-model="semester" aria-label="学期" @change="loadPlan"><el-option label="第一学期" value="first" /><el-option label="第二学期" value="second" /><el-option label="年度" value="annual" /></el-select>
       <el-button @click="loadPlan" :loading="loading">刷新记录</el-button>
+      <el-button v-if="!isReviewer" @click="$router.push({path:'/campus-activities',query:{academicYear,semester,focusKey:snapshot?.diagnosis?.focus?.key,maxMinutes:snapshot?.diagnosis?.preferences?.weeklyMinutes}})">查看匹配校园活动</el-button>
     </section>
     <section v-if="!isReviewer && !plan" class="card preference-panel">
       <div class="preference-heading"><div><h2>先确定适合自己的安排</h2><p>没有记录不等于没有参与，可选择补录已有经历或尝试新的实践。</p></div><el-button type="primary" plain :loading="previewing" :disabled="loading || saving" @click="previewChoices">预览我的计划</el-button></div>
@@ -44,6 +45,7 @@
           <div class="task-main">
             <div class="task-heading"><h3>{{ task.title }}</h3><el-tag :type="statusType(task.status)">{{ statusText(task.status) }}</el-tag></div>
             <p v-if="task.notes" class="task-record">{{ task.notes }}</p>
+            <p v-if="task.source?.kind==='campus_activity'" class="quiet-note">来自校园活动 v{{task.source.revision}} · 加入计划不等于完成报名，日期及安排请核对主办方通知。<router-link :to="{path:'/campus-activities',query:{activityId:task.source.resourceId,academicYear,semester}}">查看活动清单 ↗</router-link></p>
             <div v-if="task.attachments?.length" class="task-proofs"><a v-for="(url, i) in task.attachments" :key="url" :href="url" target="_blank" rel="noopener noreferrer">证明材料 {{ i + 1 }}</a></div>
             <div v-if="task.feedback?.length" class="task-feedback"><div v-for="(feedback, i) in task.feedback" :key="i"><strong>{{ feedback.reviewerName }}的反馈</strong><p>{{ feedback.text }}</p><time>{{ formatTime(feedback.at) }}</time></div></div>
             <div v-if="plan" class="task-actions">

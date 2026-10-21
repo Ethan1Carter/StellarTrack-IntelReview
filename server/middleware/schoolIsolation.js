@@ -26,7 +26,7 @@ function tenantConstraint(model, tenant, write = false) {
     case 'users': return { schoolId: tenant.schoolId, role: { [Op.notIn]: ['super_admin', 'developer'] } };
     case 'classes': return { collegeId: colleges };
     case 'applications': case 'appeals': case 'course_scores': case 'score_summaries':
-    case 'class_reports': case 'bonus_claims': case 'growth_plans': return { collegeId: colleges };
+    case 'class_reports': case 'bonus_claims': case 'growth_plans': case 'guidance_resources': return { collegeId: colleges };
     case 'bonus_modules': case 'evaluation_configs': case 'semesters':
       return write ? { collegeId: colleges } : { [Op.or]: [{ collegeId: colleges }, { collegeId: null }] };
     case 'notices': return { publisherId: { [Op.in]: publishers } };

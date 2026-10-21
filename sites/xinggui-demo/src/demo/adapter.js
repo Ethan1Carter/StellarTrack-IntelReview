@@ -1,3 +1,4 @@
+import {demoGuidance} from './guidanceAdapter.js';
 import { currentState, saveState, roles, modules, year, term, semester, defaults, formulas, calculate, duplicateCheck, planTemplate, workItems } from './data.js';
 import { evalFormula } from './formulaParser.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -5,6 +6,7 @@ const list=rows=>({list:rows,total:rows.length,page:1,pageSize:100});
 export async function demoAdapter(config){
   const path=config.url.replace(/^\/api/,'').split('?')[0];const method=(config.method||'get').toLowerCase();let data=config.data;try{if(typeof data==='string')data=JSON.parse(data);}catch{}data ||= {};const params=config.params||{};const state=currentState();const actor=Object.values(roles).find(u=>'Bearer demo-'+u.role===config.headers?.Authorization)||roles.student;const result=value=>({data:{code:0,data:copy(value)},status:200,statusText:'OK',headers:{},config,request:{}});const fail=message=>{throw new Error(message);};
   const matches=path.match(/^\/applications\/(\d+)(?:\/(.*))?$/);const app=matches?state.applications.find(a=>a.id===Number(matches[1])):null;
+  if(path.startsWith('/guidance'))return result(await demoGuidance(path,method,data,params,actor));
   if(path==='/auth/login')return result({token:'demo-'+data.role,user:roles[data.role]||roles.student});
   if(path==='/auth/me'||path==='/profile')return result(actor);
   if(path==='/auth/logout')return result(null);

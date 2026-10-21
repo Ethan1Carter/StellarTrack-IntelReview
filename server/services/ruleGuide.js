@@ -50,4 +50,4 @@ function searchRules(question, modules, user) {
       ], hasRule: !!String(module.ruleDescription || '').trim()
     })) };
 }
-module.exports = { searchRules };
+module.exports = { searchRules, questionTerms };

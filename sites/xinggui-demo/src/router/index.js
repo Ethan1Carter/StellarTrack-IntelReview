@@ -42,6 +42,9 @@ const routes = [
     component: () => import('@/demo/DemoShell.vue'),
     meta: { requiresAuth: true },
     children: [
+      {path:'policy-desk',name:'PolicyDesk',component:()=>import('@/views/ai/PolicyDesk.vue'),meta:{title:'制度问答与原文',roles:ROLE_GROUPS.STUDENT_LIKE}},
+      {path:'campus-activities',name:'CampusActivities',component:()=>import('@/views/ai/CampusActivities.vue'),meta:{title:'校园活动与实践机会',roles:ROLE_GROUPS.STUDENT_LIKE}},
+      {path:'guidance-resources',name:'GuidanceResources',component:()=>import('@/views/manage/GuidanceResources.vue'),meta:{title:'制度与活动发布',roles:ROLE_GROUPS.COLLEGE_ABOVE}},
       {path:'work-items',name:'WorkItems',component:()=>import('@/views/WorkItems.vue'),meta:{title:'我的待办与提醒',icon:'Bell',roles:ALL_AUTHENTICATED}},
       // ========== 智能数据看板（统一页面，多维度筛选，含AI分析功能） ==========
       {
@@ -255,7 +258,7 @@ const routes = [
   }
 ];
 
-const demoRoutes = new Set(['work-items','dashboard','growth-plan','rule-guide','apply','my-applications','approval','evaluation','evaluation-config']);
+const demoRoutes = new Set(['policy-desk','campus-activities','guidance-resources','work-items','dashboard','growth-plan','rule-guide','apply','my-applications','approval','evaluation','evaluation-config']);
 const layoutRoute = routes.find(route => route.path === '/');
 layoutRoute.children = layoutRoute.children.filter(route => demoRoutes.has(route.path));
 routes.find(route => route.path === '/register').redirect = '/login';

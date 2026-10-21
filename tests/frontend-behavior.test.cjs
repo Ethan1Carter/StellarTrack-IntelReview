@@ -46,6 +46,14 @@ function component(relative, mocks = {}, sessionStorage = storage(), props = {})
   return { state, mounted, stop: () => scope.stop(), sessionStorage };
 }
 
+test('制度切换学年后迟到回答不进入新对话，查询失败保留问题',async()=>{
+  const pending=[];const fixture=component('src/views/ai/PolicyDesk.vue',{'@/api/guidance':{getPolicies:async()=>({items:[]}),askGuidance:data=>new Promise((resolve,reject)=>pending.push({data,resolve,reject}))}});
+  try{const s=fixture.state;s.question.value='志愿服务证明';const request=s.ask();s.academicYear.value='2025-2026';s.changeYear();pending[0].resolve({answer:'旧回答',citations:[]});await request;assert.equal(s.turns.value.length,0);s.question.value='竞赛有效期';const failed=s.ask();pending[1].reject(new Error('网络暂不可用'));await failed;assert.equal(s.question.value,'竞赛有效期');assert.match(s.error.value,/网络/);}finally{fixture.stop();}
+});
+test('活动筛选变化清除旧列表，加入计划等待中切换学期不会写入错误学期',async()=>{
+  let finish,finishPlan,writes=0;const fixture=component('src/views/ai/CampusActivities.vue',{'@/api/guidance':{getCampusActivities:()=>new Promise(resolve=>finish=resolve),addActivityToPlan:async()=>writes++},'@/api/growth-plans':{getGrowthPlan:()=>new Promise(resolve=>finishPlan=resolve)}});
+  try{const s=fixture.state;const first=s.load();s.filters.focusKey='arts';finish({items:[{id:1}],notice:'旧筛选'});await first;assert.equal(s.items.value.length,0);assert.equal(s.loading.value,false);const joining=s.join({id:1,seriesId:'a'});s.semester.value=s.semester.value==='first'?'second':'first';finishPlan({plan:{revision:1}});await joining;assert.equal(writes,0);}finally{fixture.stop();}
+});
 test('网络故障保留登录，明确认证失效清理登录', async () => {
   const filename = path.resolve(__dirname, '../src/stores/user.js');
   let error = new Error('network timeout');

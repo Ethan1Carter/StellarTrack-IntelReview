@@ -1,0 +1,11 @@
+import request from '@/utils/request';
+export const getPolicies=params=>request({url:'/guidance/policies',method:'GET',params});
+export const askGuidance=data=>request({url:'/guidance/ask',method:'POST',data});
+export const getCampusActivities=params=>request({url:'/guidance/activities',method:'GET',params});
+export const addActivityToPlan=(id,data)=>request({url:`/guidance/activities/${id}/plan`,method:'POST',data});
+export const getGuidanceResources=params=>request({url:'/guidance/manage',method:'GET',params});
+export const createGuidanceResource=data=>request({url:'/guidance/manage',method:'POST',data});
+export const saveGuidanceResource=(id,data)=>request({url:`/guidance/manage/${id}`,method:'PUT',data});
+export const reviseGuidanceResource=(id,data)=>request({url:`/guidance/manage/${id}/revise`,method:'POST',data});
+export const publishGuidanceResource=(id,data)=>request({url:`/guidance/manage/${id}/publish`,method:'POST',data});
+export const withdrawGuidanceResource=(id,data)=>request({url:`/guidance/manage/${id}/withdraw`,method:'POST',data});

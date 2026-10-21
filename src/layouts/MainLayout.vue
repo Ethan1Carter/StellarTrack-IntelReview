@@ -245,6 +245,9 @@ const goHome = () => router.push('/');
 
 // ========== 菜单（按角色过滤） ==========
 const MENU_CONFIG = [
+    {path:'/policy-desk',title:'制度问答与原文',icon:'Reading',roles:['student','class_admin']},
+    {path:'/campus-activities',title:'校园活动与实践机会',icon:'Calendar',roles:['student','class_admin']},
+    {path:'/guidance-resources',title:'制度与活动发布',icon:'Document',roles:['college_admin','school_admin','super_admin']},
   {path:'/work-items',title:'我的待办与提醒',icon:'Bell',roles:['student','class_admin','counselor','college_admin','school_admin','super_admin']},
   // 智能数据看板（含AI分析功能）
   {
