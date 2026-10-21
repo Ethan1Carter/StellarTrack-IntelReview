@@ -66,23 +66,16 @@ app.use(errorHandler);
 const PORT = config.port;
 const HOST = config.host;
 
-// 启动前测试数据库连接并同步模型
+// 启动只读检查结构，升级由维护入口显式执行。
 async function bootstrap() {
   try {
     await testConnection();
     console.log('[数据库] 连接成功');
 
-    // 数据库表 / 索引 / 约束统一由以下脚本创建（SQL 脚本优先，Node 脚本兜底）：
-    //   · PostgreSQL / PolarDB-PG：server/scripts/init-pg.sql  （Navicat 打开 → 运行）
-    //   · MySQL 8.0：            server/scripts/init-db.sql   （Navicat 打开 → 运行）
-    //   · 跨方言通用：           cd server && npm run init-db （需先正确配置 .env）
-    // 为避免 sequelize.sync 生成的 DDL（ALTER / CREATE INDEX 等）与手动建表 SQL
-    // 产生列名大小写、索引命名、UNIQUE 语法、软删除列等冲突，生产/开发统一
-    // 跳过 ORM 自动同步，仅做连接验证即可。
-    // —— 若未来确实需要 ORM 从零自动建表（仅新项目初期无任何数据时临时使用），
-    //    可临时取消下方两行注释，执行一次后务必再次注释回去：
-    // await sequelize.sync({ alter: false });
-    // console.log('[数据库] 模型同步完成');
+    const schemaStatus = await require('./services/schemaMigrations').assertRuntimeSchema(sequelize);
+    if (schemaStatus && !schemaStatus.ready) {
+      console.warn('[数据库] 现有结构可用但尚未登记统一版本；请在维护窗口执行 db:upgrade 接管版本记录。');
+    }
 
     app.listen(PORT, HOST, () => {
       console.log(`

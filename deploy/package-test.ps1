@@ -6,7 +6,7 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $excludedDirectories = @('node_modules', '.git', '.agents', '.codex', '.trae', '.workbuddy', '.aws', '.ssh', 'data',
-  'logs', 'backups', 'uploads', 'dist', 'tools', 'output', 'tmp', 'archive', 'qa-verify', 'dist_qa_verify')
+  'logs', 'backups', 'uploads', 'dist', 'tools', 'output', 'tmp', 'archive', 'qa-verify', 'dist_qa_verify', '.serena')
 
 function Get-PackageFiles([string]$Directory) {
   foreach ($item in Get-ChildItem -LiteralPath $Directory -Force) {
@@ -18,7 +18,9 @@ function Get-PackageFiles([string]$Directory) {
     if ($item.Name -like '.env*' -and $item.Name -ne '.env.example') { continue }
     if ($item.Name -in @('.npmrc', '.pypirc', '.git-credentials', 'id_rsa', 'id_ed25519')) { continue }
     if ($item.Extension -in @('.log', '.zip', '.sql', '.dump', '.backup', '.pem', '.key', '.pfx')) {
-      if ($item.Extension -ne '.sql' -or -not $item.FullName.StartsWith((Join-Path $projectRoot 'server\scripts') + '\', [StringComparison]::OrdinalIgnoreCase)) { continue }
+      $isScriptSql = $item.FullName.StartsWith((Join-Path $projectRoot 'server\scripts') + '\', [StringComparison]::OrdinalIgnoreCase)
+      $isMigrationSql = (Split-Path -Parent $item.FullName) -eq (Join-Path $projectRoot 'server\migrations') -and $item.Name -match '^\d{3}-[a-z0-9-]+\.sql$'
+      if ($item.Extension -ne '.sql' -or (-not $isScriptSql -and -not $isMigrationSql)) { continue }
     }
     if ($item.FullName -eq [IO.Path]::GetFullPath($OutputPath)) { continue }
     $item

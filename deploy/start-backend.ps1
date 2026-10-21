@@ -17,6 +17,8 @@ Push-Location $serverRoot
 try {
   npm ci
   if ($LASTEXITCODE -ne 0) { throw '后端依赖安装失败，请检查网络和锁文件。' }
+  npm run db:check
+  if ($LASTEXITCODE -ne 0) { throw '数据库版本未就绪。请先查看 db:status，确认维护窗口并执行 db:upgrade，再启动服务。' }
   npm run start
   if ($LASTEXITCODE -ne 0) { throw '后端服务启动失败，请检查上面的错误信息。' }
 } finally {

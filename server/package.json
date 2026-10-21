@@ -4,6 +4,10 @@
   "description": "星轨智评 - 高校五育综合评价平台后端服务",
   "main": "app.js",
   "scripts": {
+    "db:status": "node scripts/migrate-db.js",
+    "db:check": "node scripts/migrate-db.js --check",
+    "db:upgrade": "node scripts/migrate-db.js --apply",
+    "test:workflow-db": "node scripts/test-workflow-db.js --isolated-database",
     "migrate:guidance": "node scripts/migrate-guidance.js --apply",
     "migrate:growth-plans": "node scripts/migrate-growth-plans.js",
     "check:ai-runtime": "node scripts/check-ai-runtime.js",

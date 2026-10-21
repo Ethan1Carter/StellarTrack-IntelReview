@@ -11,9 +11,11 @@ test('部署清单只保留环境示例，不包含配置备份、用户材料�
   assert.ok(files.includes('server/.env.example'));
   assert.ok(files.includes('server/package-lock.json'));
   assert.ok(files.includes('server/scripts/init-pg.sql'));
+  for (const file of ['001-core.sql', '002-growth.sql', '003-guidance.sql', 'schema-contract.json']) assert.ok(files.includes('server/migrations/' + file));
+  assert.ok(files.includes('server/scripts/migrate-db.js'));
   for (const file of files) {
     if (path.posix.basename(file).startsWith('.env')) assert.equal(path.posix.basename(file), '.env.example');
-    assert.ok(!/(^|\/)(uploads|backups|node_modules|\.git|\.ssh|\.aws)\//.test(file));
+    assert.ok(!/(^|\/)(uploads|backups|node_modules|\.git|\.ssh|\.aws|\.serena)\//.test(file));
     assert.ok(!/\.(pem|key|pfx|dump|backup)$/.test(file));
   }
 });

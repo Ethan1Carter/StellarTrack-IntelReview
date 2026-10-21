@@ -1,0 +1,157 @@
+{
+  "generatedAt": "2026-10-21T07:14:21.835Z",
+  "isolation": "new-random-postgresql-databases",
+  "syntheticDataOnly": true,
+  "checks": [
+    {
+      "name": "只读检查不创建版本表",
+      "passed": true
+    },
+    {
+      "name": "错误目标库确认拒绝执行",
+      "passed": true
+    },
+    {
+      "name": "空库完整初始化且不生成演示账号",
+      "passed": true
+    },
+    {
+      "name": "重复升级不重复执行",
+      "passed": true
+    },
+    {
+      "name": "禁止篡改已执行的升级文件",
+      "passed": true
+    },
+    {
+      "name": "未知版本与缺失的前置版本会阻止升级",
+      "passed": true
+    },
+    {
+      "name": "结构漂移明确拒绝接管",
+      "passed": true
+    },
+    {
+      "name": "多进程升级锁阻止并发执行",
+      "passed": true
+    },
+    {
+      "name": "升级中途失败时结构与版本记录一起回滚",
+      "passed": true
+    },
+    {
+      "name": "后续字段变更可按版本执行并可重复检查",
+      "passed": true
+    },
+    {
+      "name": "启动前检查会阻止缺表库提供不完整服务",
+      "passed": true
+    },
+    {
+      "name": "已有库缺少维护确认时拒绝升级",
+      "passed": true
+    },
+    {
+      "name": "数据库备份失败时不写版本表、不修改原数据",
+      "passed": true
+    },
+    {
+      "name": "已有核心库先完整备份再接管并补齐新表",
+      "passed": true
+    },
+    {
+      "name": "合成多角色通过真实密码登录和JWT鉴权",
+      "passed": true
+    },
+    {
+      "name": "学院管理员创建学期且学生不可越权创建",
+      "passed": true
+    },
+    {
+      "name": "学期关闭时拒绝正式申报但允许草稿",
+      "passed": true
+    },
+    {
+      "name": "开启学期后草稿提交进入班级管理员审核",
+      "passed": true
+    },
+    {
+      "name": "重复申报与学生自审均被拒绝",
+      "passed": true
+    },
+    {
+      "name": "初审通过写入分数，重复审批不重复加分",
+      "passed": true
+    },
+    {
+      "name": "跨校教师不可终审，本班教师改分后汇总一致",
+      "passed": true
+    },
+    {
+      "name": "并发初审仅成功一次，终审驳回后分数正确扣除",
+      "passed": true
+    },
+    {
+      "name": "学生与跨校管理员不可读取其他学生申报",
+      "passed": true
+    },
+    {
+      "name": "班级报表生成、上报、退回、重报与通过",
+      "passed": true
+    },
+    {
+      "name": "制度草稿不外泄，发布后问答引用原文与版本",
+      "passed": true
+    },
+    {
+      "name": "制度修订发布保留旧文，学生只看到新版本",
+      "passed": true
+    },
+    {
+      "name": "活动发布后按方向和时长筛选，其他学校不可见",
+      "passed": true
+    },
+    {
+      "name": "成长计划创建幂等，活动加入不报名、不计分且不能重复加入",
+      "passed": true
+    },
+    {
+      "name": "学生提交成长记录，教师核验并保留过程，旧版本修改被拒绝",
+      "passed": true
+    },
+    {
+      "name": "撤回活动后不再推荐且不能再加入计划",
+      "passed": true
+    },
+    {
+      "name": "站内待办可读取，错误学期不污染既有记录",
+      "passed": true
+    },
+    {
+      "name": "完整备份可恢复到另一空测试库且所有表内容指纹一致",
+      "passed": true
+    }
+  ],
+  "migrationChecksums": [
+    {
+      "id": "20261021_001",
+      "checksum": "9a03c047cfb1c5ac9cfbaebd4691e26a972c973da15e79df88f54f05f9b02998"
+    },
+    {
+      "id": "20261021_002",
+      "checksum": "5af97b729f1a0b60100622b34af3c5ba0f913ff38dc63dedcce6384b508017d3"
+    },
+    {
+      "id": "20261021_003",
+      "checksum": "45227251d8acc0aba7d5a1d8043efab3845f9b3b85f031257958eef0b1848797"
+    }
+  ],
+  "upgradeBackupVerified": true,
+  "restoreVerified": {
+    "tables": 24,
+    "contentsMatch": true,
+    "source": "synthetic-test-database"
+  },
+  "testDatabasesRemoved": true,
+  "passed": true
+}
