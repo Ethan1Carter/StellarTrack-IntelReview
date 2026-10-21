@@ -6,7 +6,7 @@ const {validateResource,validateQuestion,eligible,resourceView,askPolicies,recom
 const router=express.Router();
 const idValue=value=>{const n=Number(value);if(!Number.isSafeInteger(n)||n<1)throw new AppError('记录 ID 无效',400);return n;};
 const plain=row=>row.toJSON?row.toJSON():row;
-const asyncRoute=fn=>async(req,res,next)=>{try{await fn(req,res);}catch(error){if(error.name==='SequelizeUniqueConstraintError')return next(new AppError('资源已更新，请刷新后重试',409));if(error.original?.code==='42P01')return next(new AppError('制度与活动数据表尚未启用，请联系维护人员完成升级',503));next(error);}};
+const asyncRoute=fn=>async(req,res,next)=>{try{await fn(req,res);}catch(error){if(error.name==='SequelizeUniqueConstraintError')return next(new AppError('资源已更新，请刷新后重试',409));if(error.original?.code==='42P01')return next(new AppError('制度与活动数据表尚未启用，请联系维护人员完成升级',503,'GUIDANCE_STORAGE_NOT_READY'));next(error);}};
 function ownCollege(req){const college=idValue(req.user.collegeId);return college;}
 function assertVersion(row,value){if(!Number.isInteger(value)||row.editVersion!==value)throw new AppError('记录已更新，请刷新后重试',409);}
 async function managedRow(req,id,transaction){const row=await GuidanceResource.findByPk(idValue(id),{transaction,lock:transaction?.LOCK?.UPDATE});if(!row)throw new AppError('记录不存在',404);narrowCollegeIds(req,row.collegeId);return row;}

@@ -23,6 +23,20 @@ function evaluate(filename, source, mocks, sessionStorage = storage()) {
   return module.exports;
 }
 const messages = new Proxy({}, { get: () => () => {} });
+
+test('资源表未启用显示升级提示，其他服务异常仍隐藏内部详情', async () => {
+  let rejectResponse;
+  const instance = { interceptors: { request: { use() {} }, response: { use(_success, failure) { rejectResponse = failure; } } } };
+  const filename = path.resolve(__dirname, '../src/utils/request.js');
+  evaluate(filename, fs.readFileSync(filename, 'utf8').replace('import.meta.env.VITE_API_BASE', 'undefined'), {
+    axios: { create: () => instance }, 'element-plus': { ElMessage: messages, ElMessageBox: {} },
+    nprogress: { start() {}, done() {} }, '@/stores/user': { useUserStore: () => ({}) }, '@/router': {}
+  });
+  for (const [status, code, expected] of [[503, 'GUIDANCE_STORAGE_NOT_READY', '制度与活动功能尚未启用，请联系维护人员完成数据库升级'], [503, 503, '服务器错误（503）'], [500, 500, '服务器错误（500）']]) {
+    const error = { response: { status, data: { code, message: '数据库内部连接细节' } }, config: { __suppressMsg: true } };
+    await assert.rejects(rejectResponse(error), result => result === error && result.message === expected);
+  }
+});
 function component(relative, mocks = {}, sessionStorage = storage(), props = {}) {
   const filename = path.resolve(__dirname, '..', relative);
   const { descriptor } = parse(fs.readFileSync(filename, 'utf8'), { filename });

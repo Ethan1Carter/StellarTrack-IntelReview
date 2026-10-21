@@ -87,6 +87,9 @@ service.interceptors.response.use((res) => {
       // 不自动跳转到403页面，让组件自己处理权限错误
     }
     else if (err.response.status === 404) msg = '接口不存在';
+    else if (err.response.status === 503 && err.response.data?.code === 'GUIDANCE_STORAGE_NOT_READY') {
+      msg = '制度与活动功能尚未启用，请联系维护人员完成数据库升级';
+    }
     else if (err.response.status >= 500) msg = '服务器错误（'+err.response.status+'）';
     else msg = err.response.data?.message || ('HTTP ' + err.response.status);
   } else if (err.code === 'ECONNABORTED') msg = '请求超时，请稍后重试';
