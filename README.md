@@ -10,6 +10,8 @@
 
 第三轮：[材料查重、计分解释与统一待办](docs/查重计分待办优化说明.md)，支持文件指纹和同成果核对、计算过程与只读样本试算、统一待办及临期提醒。
 
+Sites：[独立演示站](https://xinggui-intelreview.ajhz217.chatgpt.site)（所有者私有，使用示例数据），源码位于 `sites/xinggui-demo/`，详见 [交付说明](docs/Sites演示站交付说明.md)。
+
 ## 技术栈
 
 - 前端：Vue 3、Vite、Element Plus、Pinia、ECharts
